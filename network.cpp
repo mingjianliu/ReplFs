@@ -29,7 +29,13 @@
 #define TRANSACTREQ 13
 #define TRANSACTRES 14
 
+#define PORT 44032
+#define THEGROUP 0xe0010101
+
 static int theSocket;
+/* Use this socket address to send packets to the multi-cast group. */
+static Sockaddr groupAddr;
+
 
 typedef struct {
   unsigned char type;
@@ -61,14 +67,6 @@ typedef struct{
 	uint32_t	writeVector[4];
 
 } packetInfo; 
-
-void memcpy_helper(void* destination, void* source, std::size_t count, std::size_t* offset){
-          memset((uint8_t*)destination+*offset, 0, count);
-          memcpy((uint8_t*)destination+*offset, source, count);
-          //destination = (void*)(static_cast<char*>(destination) + count);
-          *offset += count;
-          return;
-}
 
 void sendPacket(unsigned char packType, packetInfo packet){
 	ReplFsPacket outPacket;
@@ -137,7 +135,73 @@ ReplFsPacket receviePacket(ReplFsPacket inPacket){
 	return packet;
 }
 
+void netInit(){
+	Sockaddr nullAddr;
+	Sockaddr *thisHost;
+  	char buf[128];
+  	int reuse;
+  	u_char ttl;
+  	struct ip_mreq mreq;
+	
+  	gethostname(buf, sizeof(buf));
+  	if ((thisHost = resolveHost(buf)) == (Sockaddr *)NULL)
+  	  printf((char *)"who am I?");
+  	bcopy((caddr_t)thisHost, (caddr_t)(M->myAddr()), sizeof(Sockaddr));
+	
+  	theSocket = socket(AF_INET, SOCK_DGRAM, 0);
+  	if (theSocket < 0)
+  	  printf((char *)"can't get socket");
+	
+  	/* SO_REUSEADDR allows more than one binding to the same
+  	   socket - you cannot have more than one player on one
+  	   machine without this */
+  	reuse = 1;
+  	if (setsockopt(theSocket, SOL_SOCKET, SO_REUSEADDR, &reuse,
+  	               sizeof(reuse)) < 0) {
+  	  printf((char *)"setsockopt failed (SO_REUSEADDR)");
+  	}
+	
+  	nullAddr.sin_family = AF_INET;
+  	nullAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  	nullAddr.sin_port = PORT;
+  	if (bind(theSocket, (struct sockaddr *)&nullAddr, sizeof(nullAddr)) < 0)
+  	  printf((char *)"netInit binding");
+	
+  	/* Multicast TTL:
+  	   0 restricted to the same host
+  	   1 restricted to the same subnet
+  	   32 restricted to the same site
+  	   64 restricted to the same region
+  	   128 restricted to the same continent
+  	   255 unrestricted
+	
+  	   DO NOT use a value > 32. If possible, use a value of 1 when
+  	   testing.
+  	*/
+	
+  	ttl = 1;
+  	if (setsockopt(theSocket, IPPROTO_IP, IP_MULTICAST_TTL, &ttl,
+  	               sizeof(ttl)) < 0) {
+  	  printf((char *)"setsockopt failed (IP_MULTICAST_TTL)");
+  	}
+	
+  	/* join the multicast group */
+  	mreq.imr_multiaddr.s_addr = htonl(THEGROUP);
+  	mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+  	if (setsockopt(theSocket, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *)&mreq,
+  	               sizeof(mreq)) < 0) {
+  	  printf((char *)"setsockopt failed (IP_ADD_MEMBERSHIP)");
+  	}
+	
+  	printf("netinit finished!\n");
+	
+  	/* Get the multi-cast address ready to use in SendData()
+  	   calls. */
+  	memcpy(&groupAddr, &nullAddr, sizeof(Sockaddr));
+  	groupAddr.sin_addr.s_addr = htonl(THEGROUP);
 
+
+}
 
 
 
