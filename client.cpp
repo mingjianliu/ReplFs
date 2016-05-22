@@ -8,6 +8,8 @@
 #define DEBUG
 #define MAX_RESEND 10
 #define MaxBlockLength 512
+#define EVENT_TIMEOUT 0
+#define EVENT_INCOMING 1
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -21,7 +23,10 @@
 #include <set>
 #include <map>
 #include <iostream>
+#include "network.cpp"
 
+static int initialized = 0;
+static int ThePacketLoss = 0;
 
 /* ------------------------------------------------------------------ */
 
@@ -59,7 +64,7 @@ class client{
       ID = id;
     }
 
-    int get_fd(){
+    uint32_t get_fd(){
       return fd;
     }
 
@@ -94,6 +99,8 @@ class client{
 
 int
 InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
+  if(initialized != 0) 
+    return 0; 
 #ifdef DEBUG
   printf( "InitReplFs: Port number %d, packet loss %d percent, %d servers\n", 
 	  portNum, packetLoss, numServers );
@@ -103,19 +110,39 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
   /* Initialize network access, local state, etc.     */
   /****************************************************/
   client *client::client_singleton = 0;
-  //Send out the init packet, 
+  client::instance()->set_ID(uint32_t random());
+  ThePacketLoss = packetLoss;
+  //Send out the init packet
+  packetInfo packet;
+  packet.clientID = client::instance()->get_ID();
   
   netInit();
   int resend = 0;
   //Mimic packet loss
-  if(random()%100 > packetLoss){
-    sendpacket(packet);
-  }
-  while(resend < MAX_RESEND && client::instance()->servers.size() != numServers){
-    //if recevied timeout interval, resend one
+  sendpacket(INIT, packet);
 
+  ReplFsEvent event;
+  ReplFsPacket incoming;
+  event.eventDetail = &incoming;
+
+  while(resend < MAX_RESEND && client::instance()->servers.size() != numServers){
+    NextEvent(&event, theSocket);
+    //if recevied timeout interval, resend one
+    if(event.eventType==EVENT_TIMEOUT){
+      ++resend;
+      sendpacket(INIT, packet);
+    }
     //if received initACK, save the serverID
+    if(event.eventType==EVENT_INCOMING && incoming.type == INITACK){
+      packetInfo info = receviePacket(incoming);
+      if(info.clientID == client::instance()->get_ID){
+        client::instance()->servers.insert(info.serverID);
+      }
+    }
   }  
+
+  if(resend == MAX_RESEND)
+    return (ErrorReturn);
 
   return( NormalReturn );  
 }

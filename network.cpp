@@ -1,6 +1,3 @@
-#define MAX_FILE_NAME_SIZE 128
-#define MAX_BUFFER_SIZE 512
-
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,65 +7,17 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <stdbool.h>
-#include <string>
+#include <string.h>
 #include <sstream>
-
-#define INIT 0
-#define INITACK 1
-#define OPEN 2
-#define OPENACK 3
-#define WRITEBLOCK 4
-#define CHECK 5
-#define VOTE 6
-#define RESENDREQ 7
-#define RESENDRES 8
-#define COMMIT 9
-#define COMMITACK 10
-#define ABORT 11
-#define ABORTACK 12
-#define TRANSACTREQ 13
-#define TRANSACTRES 14
-
-#define PORT 44032
-#define THEGROUP 0xe0010101
+#include "network.h"
 
 static int theSocket;
 /* Use this socket address to send packets to the multi-cast group. */
 static Sockaddr groupAddr;
-
-
-typedef struct {
-  unsigned char type;
-  uint32_t body[1024];
-} ReplFsPacket;
-
-typedef struct {
-  short eventType;
-  ReplFsPacket *eventDetail; /* for incoming data */
-  Sockaddr eventSource;
-} ReplFsEvent;
-
-
-typedef struct{
-	uint32_t 	clientID;
-	uint32_t 	serverID;
-	uint32_t 	fd;
-	uint32_t 	transactionID;
-	uint32_t 	transactionStatue;
-	uint32_t 	writeNumber;
-	uint32_t 	nameLength;
-	uint8_t 	fileName[MAX_FILE_NAME_SIZE];	
-	uint32_t 	byteOffset;
-	uint32_t 	blockSize;
-	uint8_t 	buffer[MAX_BUFFER_SIZE];
-	uint32_t 	success;
-	uint32_t 	vote;
-	uint32_t 	close;
-	uint32_t	writeVector[4];
-
-} packetInfo; 
+static int ThePacketLoss;
 
 void sendPacket(unsigned char packType, packetInfo packet){
+	if(random()%100 < ThePacketLoss)	return;
 	ReplFsPacket outPacket;
 	outPacket.type = packType;
 	outPacket.body[0] = htonl(packet.clientID);
@@ -98,14 +47,11 @@ void sendPacket(unsigned char packType, packetInfo packet){
 	}
 	
 	if (sendto(theSocket, &outPacket, sizeof(outPacket), 0, (struct sockaddr *)&groupAddr, sizeof(Sockaddr)) < 0)
-		printf((char *)"Send packet error");
-
-	
+		printf((char *)"Send packet error");	
 }
 
-ReplFsPacket receviePacket(ReplFsPacket inPacket){
-	ReplFsPacket packet;
-	packet.packType = inPacket.type;
+packetInfo receviePacket(ReplFsPacket inPacket){
+	packetInfo packet;
 	packet.clientID = ntohl(inPacket.body[0]);
 	packet.serverID = ntohl(inPacket.body[1]);
 	packet.fd = ntohl(inPacket.body[2]);
@@ -121,17 +67,16 @@ ReplFsPacket receviePacket(ReplFsPacket inPacket){
 	for(int i=0; i<4; i++){
 		packet.writeVector[i] = ntohl(inPacket.body[12+i]);
 	}
-	if(packType == OPEN){
+	if(inPacket.type == OPEN){
 		for(int i=0; i<MAX_FILE_NAME_SIZE; i++){
 			packet.fileName[i] = ntohl(inPacket.body[16+i]);
 		}	
 	}
-	if(packType == WRITEBLOCK){
+	if(inPacket.type == WRITEBLOCK){
 		for(int i=0; i<MAX_BUFFER_SIZE; i++){
 			packet.buffer[i] = ntohl(inPacket.body[16+MAX_FILE_NAME_SIZE+i]);			
 		}	
 	}
-
 	return packet;
 }
 
@@ -146,8 +91,7 @@ void netInit(){
   	gethostname(buf, sizeof(buf));
   	if ((thisHost = resolveHost(buf)) == (Sockaddr *)NULL)
   	  printf((char *)"who am I?");
-  	bcopy((caddr_t)thisHost, (caddr_t)(M->myAddr()), sizeof(Sockaddr));
-	
+  	
   	theSocket = socket(AF_INET, SOCK_DGRAM, 0);
   	if (theSocket < 0)
   	  printf((char *)"can't get socket");
@@ -199,11 +143,7 @@ void netInit(){
   	   calls. */
   	memcpy(&groupAddr, &nullAddr, sizeof(Sockaddr));
   	groupAddr.sin_addr.s_addr = htonl(THEGROUP);
-
-
 }
-
-
 
 /* get hostname and host socket */
 void getHostName(char *prompt, char **hostName, Sockaddr *hostAddr) {
@@ -233,8 +173,6 @@ void getHostName(char *prompt, char **hostName, Sockaddr *hostAddr) {
     bcopy((char *)AddrTemp, (char *)hostAddr, sizeof(Sockaddr));
 }
 
-
-
 Sockaddr *resolveHost(register char *name) {
   register struct hostent *fhost;
   struct in_addr fadd;
@@ -254,6 +192,55 @@ Sockaddr *resolveHost(register char *name) {
       return (NULL);
   }
   return (&sa);
+}
+
+void nextEvent(ReplFsEvent* event){
+  static bool nextTimeoutInitialized = false;
+  static struct timeval nextTimeout;
+  if(!nextTimeoutInitialized){
+    gettimeofday(&nextTimeout,NULL);
+    incrementTimeout(&nextTimeout);
+    nextTimeoutInitialized = true;
+  }
+  struct timeval currTime;
+  gettimeofday(&currTime,NULL);
+  struct timeval timeTillTimeout;
+  subtractTimevals(&nextTimeout,&currTime,&timeTillTimeout);
+  fd_set fdmask;
+  FD_ZERO(&fdmask);
+  FD_SET(theSocket,&fdmask);
+  if(select(theSocket+1,&fdmask,NULL,NULL,&timeTillTimeout) > 0){
+  	socklen_t fromLen = sizeof(struct sockaddr);
+  	recvfrom(theSocket,event->eventDetail,sizeof(ReplFsPacket),0,(struct sockaddr*)&(event->eventSource),&fromLen);
+    event->eventType = EVENT_INCOMING;
+  }else{
+    incrementTimeout(&nextTimeout);
+    event->eventType = EVENT_TIMEOUT;
+    memset(&(event->eventSource),0, sizeof(event->eventSource));
+    memset(event->eventDetail,0, sizeof(event->eventDetail));
+  }
+  return;
+}
+
+static void incrementTimeout(struct timeval* timeout){
+  timeout->tv_usec += HEARTBEAT_USEC;
+  if(timeout->tv_usec >= USEC_PER_SEC){
+    timeout->tv_sec += timeout->tv_usec / USEC_PER_SEC;
+    timeout->tv_usec %= USEC_PER_SEC;
+  }
+}
+
+static void subtractTimevals(const struct timeval* one, const struct timeval* two, struct timeval* result){
+  long usecs = (one->tv_sec - two->tv_sec) * USEC_PER_SEC;
+  usecs += (one->tv_usec - two->tv_usec);
+  result->tv_usec = usecs % USEC_PER_SEC;
+  result->tv_sec = usecs / USEC_PER_SEC;
+}
+
+
+
+int main(){
+	return 0;
 }
 
 
