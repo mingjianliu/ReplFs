@@ -157,6 +157,7 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
   ASSERT( byteOffset >= 0 );
   ASSERT( buffer );
   ASSERT( blockSize >= 0 && blockSize < MaxBlockLength );
+  ASSERT(byteOffset + blockSize < MaxFileSize);
 
 #ifdef DEBUG
   printf( "WriteBlock: Writing FD=%d, Offset=%d, Length=%d\n",
