@@ -14,6 +14,9 @@
 #include <set>
 #include <map>
 #include <iostream>
+#include <string.h>
+
+using namespace std;
 
 /* ------------------------------------------------------------------ */
 
@@ -81,19 +84,36 @@ class client{
     }
 };
 
+
+typedef struct{
+  uint32_t serverID;
+  uint32_t fd;
+  uint32_t transactionID;
+  uint32_t transactionStatue;
+} TranscationResponse;
+
+
 client *client::client_singleton = 0;
 
+void testlength(char * test){
+  char result[10];
+  strncpy(result, test, strlen(test));
+  cout<< result <<endl;
+
+}
+
+void testvector(vector<int> test){
+  cout << test[0] << endl;
+  cout << test[1] << endl;
+  cout << test[2] << endl;
+  cout << test[3] << endl;
+  test.clear();
+}
+
 int main(){
-
-  static int serverID[16];
-  client::instance()->set_fd(10);
-  std::cout << client::instance()->get_fd() << std::endl;
-  std::cout << client::instance()->servers.size() <<std::endl;
-  client::instance()->servers.insert(1);
-  client::instance()->servers.insert(2);
-  client::instance()->servers.insert(3);
-  client::instance()->servers.insert(1);
-  std::cout << client::instance()->servers.size() <<std::endl;
-
+  uint32_t i=1;
+  i = i <<31;
+  cout << i << endl;
+   
   return 0;
 }

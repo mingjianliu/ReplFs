@@ -20,13 +20,12 @@
 #define CHECK 5
 #define VOTE 6
 #define RESENDREQ 7
-#define RESENDRES 8
-#define COMMIT 9
-#define COMMITACK 10
-#define ABORT 11
-#define ABORTACK 12
-#define TRANSACTREQ 13
-#define TRANSACTRES 14
+#define COMMIT 8
+#define COMMITACK 9
+#define ABORT 10
+#define ABORTACK 11
+#define TRANSACTREQ 12
+#define TRANSACTRES 13
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
 
