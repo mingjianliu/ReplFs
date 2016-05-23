@@ -24,18 +24,11 @@
 #include <map>
 #include <iostream>
 #include "network.cpp"
+#include "client.h"
 
 static int initialized = 0;
-static int ThePacketLoss = 0;
 
 /* ------------------------------------------------------------------ */
-
-struct data{
-  int offset;
-  char strData[MaxBlockLength];
-  int blockSize;
-};
-
 
 //The singleton client class
 class client{
@@ -96,6 +89,13 @@ class client{
       writeInfo.clear();
     }
 
+    void close(){
+      fd = 0;
+      transaction = 0;
+      currentWrite = 0;
+      writeInfo.clear();
+    }
+
     static client *instance(){
       if(!client_singleton){
         client_singleton = new client;
@@ -105,7 +105,7 @@ class client{
 };
 
 
-
+client *client::client_singleton = 0;
 
 int
 InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
@@ -119,16 +119,15 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
   /****************************************************/
   /* Initialize network access, local state, etc.     */
   /****************************************************/
-  client *client::client_singleton = 0;
-  client::instance()->set_ID(uint32_t random());
+  client::instance()->set_ID((uint32_t) random());
   ThePacketLoss = packetLoss;
   //Send out the init packet
   packetInfo packet;
   packet.clientID = client::instance()->get_ID();
-  
+  Port = 44032;
   netInit();
   int resend = 0;
-  sendpacket(INIT, packet);
+  sendPacket(INIT, packet);
 
   ReplFsEvent event;
   ReplFsPacket incoming;
@@ -139,12 +138,12 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
     //if recevied timeout interval, resend one
     if(event.eventType==EVENT_TIMEOUT){
       ++resend;
-      sendpacket(INIT, packet);
+      sendPacket(INIT, packet);
     }
     //if received initACK, save the serverID
     if(event.eventType==EVENT_INCOMING && incoming.type == INITACK){
       packetInfo info = receviePacket(incoming);
-      if(info.clientID == client::instance()->get_ID){
+      if(info.clientID == client::instance()->get_ID()){
         client::instance()->servers.insert(info.serverID);
       }
     }
@@ -166,17 +165,18 @@ OpenFile( char * fileName ) {
   printf( "OpenFile: Opening File '%s'\n", fileName );
 #endif
 
-  if(client::instance()->get_fd == 0){return ErrorReturn;}
+  bool fail = false;
+  if(client::instance()->get_fd() == 0){return ErrorReturn;}
   uint32_t fd = 0;
   while(fd!=0)  fd = random();
-  client::instance()->set_fd();
+  client::instance()->set_fd(fd);
 
   packetInfo packet;
   packet.clientID = client::instance()->get_ID();
   packet.fd = client::instance()->get_fd();
   packet.nameLength = strlen(fileName);
-  strncpy(packet.fileName, fileName, strlen(fileName));
-  sendpacket(OPEN, packet);
+  strncpy((char*)packet.fileName, fileName, strlen(fileName));
+  sendPacket(OPEN, packet);
   ReplFsEvent event;
   ReplFsPacket incoming;
   event.eventDetail = &incoming;
@@ -187,22 +187,22 @@ OpenFile( char * fileName ) {
     //if recevied timeout interval, resend one
     if(event.eventType==EVENT_TIMEOUT){
       ++resend;
-      sendpacket(OPEN, packet);
+      sendPacket(OPEN, packet);
     }
     //if received initACK, save the serverID
     if(event.eventType==EVENT_INCOMING && incoming.type == OPENACK){
       packetInfo info = receviePacket(incoming);
-      if(info.clientID == client::instance()->get_ID && info.fd == fd && server.find(serverID)!=server.end() ){
-        server.erase(serverID);
-        if(info.success == 0) return -1;
-        else 
+      if(info.clientID == client::instance()->get_ID() && info.fd == fd && server.find(info.serverID)!=server.end() ){
+        server.erase(info.serverID);
+        if(info.success == 0) fail = true;
       }
     }
   }  
 
   cleanServer(server); 
 
-  return( fd );
+  if(fail)  return -1;
+  else  return( fd );
 }
 
 /* ------------------------------------------------------------------ */
@@ -231,7 +231,7 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
   packet.writeNumber = client::instance()->getSequenceNO();
   packet.byteOffset = blockSize;
   packet.blockSize = byteOffset;
-  strncpy(packet.buffer, buffer, strlen(buffer));
+  strncpy((char*)packet.buffer, buffer, strlen(buffer));
   
   int resend = 0;
   data write;
@@ -248,7 +248,7 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
 
   while(resend < MAX_RESEND) {
     ++resend;
-    sendpacket(WRITEBLOCK, packet);
+    sendPacket(WRITEBLOCK, packet);
   }  
 
   return( bytesWritten );
@@ -266,7 +266,7 @@ int Commit(int fd){
 }
 
 int
-Commit_helper( int fd, boolean close) {
+Commit_helper( int fd, bool close) {
   ASSERT( fd >= 0 );
   ASSERT( client::instance()->servers.size() != 0);
   if( fd != client::instance()->get_fd()) return ErrorReturn;
@@ -289,7 +289,7 @@ Commit_helper( int fd, boolean close) {
   packet.fd = client::instance()->get_fd();
   packet.transactionID = client::instance()->getTranscation();
   packet.writeNumber = client::instance()->getSequenceNO();
-  sendpacket(CHECK, packet);
+  sendPacket(CHECK, packet);
 
   ReplFsEvent event;
   ReplFsPacket incoming;
@@ -303,7 +303,7 @@ Commit_helper( int fd, boolean close) {
     //if recevied timeout interval, resend one
     if(event.eventType==EVENT_TIMEOUT){
       ++resend;
-      sendpacket(CHECK, packet);
+      sendPacket(CHECK, packet);
     }
     if(event.eventType==EVENT_INCOMING){
       packetInfo info = receviePacket(incoming);
@@ -316,10 +316,11 @@ Commit_helper( int fd, boolean close) {
 
       if(incoming.type == RESENDREQ && server.find(info.serverID)!=server.end() && info.clientID == packet.clientID && info.fd == packet.fd){
         //resend all writes needed
-        resendPacket(data, info.writeVector);
+        resendPacket(writeinfo, info.writeVector);
         resend = 0;
       }
     }
+  }
 
   //If any server left, regard them as dead, delete in client::instance.
   cleanServer(server); 
@@ -340,18 +341,18 @@ Commit_helper( int fd, boolean close) {
   resend = 0;
   packet.close = (close)? 1:0;
   server = client::instance()->servers;
-  sendpacket(COMMIT, packet);
+  sendPacket(COMMIT, packet);
   while(resend < MAX_RESEND && server.size() != 0){
     NextEvent(&event);
     //if recevied timeout interval, resend one
     if(event.eventType==EVENT_TIMEOUT){
       ++resend;
-      sendpacket(COMMIT, packet);
+      sendPacket(COMMIT, packet);
     }
-    if(event.eventType==EVENT_INCOMING && incoming.type == COMMITACK && server.find(incoming.serverID)!=server.end()){
+    if(event.eventType==EVENT_INCOMING && incoming.type == COMMITACK ){
       packetInfo info = receviePacket(incoming);
       //If response with commitACK, client and transcation matches
-      if(info.clientID == packet.clientID && info.transactionID == packet.transactionID && info.fd == packet.fd){
+      if(info.clientID == packet.clientID && info.transactionID == packet.transactionID && info.fd == packet.fd && server.find(info.serverID)!=server.end()){
         server.erase(info.serverID);
       }
     }
@@ -362,13 +363,13 @@ Commit_helper( int fd, boolean close) {
   return( NormalReturn );
 }
 
-void resendPacket(std::vector<data> data, std::vector<int> writeVector){
+void resendPacket(std::vector<data> data, uint32_t writeVector[]){
   for(int i=0; i<4; i++){
     int compare = 1;
-    for(int shift=0; shift<32; shift++){
-      if(!(compare & writeVector)){
+    for(int j=0; j<32; j++){
+      if(!(compare & writeVector[i])){
         //Send this packet by i*32 + j
-        WriteBlock(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize)
+        WriteBlock(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize);
       }
 
       compare << 1;
@@ -394,7 +395,7 @@ Abort( int fd )
   packet.clientID = client::instance()->get_ID();
   packet.fd = client::instance()->get_fd();
   packet.transactionID = client::instance()->getTranscation();
-  sendpacket(ABORT, packet);
+  sendPacket(ABORT, packet);
 
   ReplFsEvent event;
   ReplFsPacket incoming;
@@ -407,7 +408,7 @@ Abort( int fd )
     //if recevied timeout interval, resend one
     if(event.eventType==EVENT_TIMEOUT){
       ++resend;
-      sendpacket(ABORT, packet);
+      sendPacket(ABORT, packet);
     }
     if(event.eventType==EVENT_INCOMING){
       packetInfo info = receviePacket(incoming);
@@ -427,7 +428,7 @@ Abort( int fd )
 void cleanServer(std::set<uint32_t> server){
   if(server.size()!=0){
     for(uint32_t each: server){
-      client::instance()->servers.earse(each);
+      client::instance()->servers.erase(each);
     }
   }
 }
@@ -448,7 +449,9 @@ CloseFile( int fd ) {
 	/* Check for Commit or Abort */
 	/*****************************/
 
-  if ( Commit( fd, true ) < 0 ) {
+  client::instance()->close();
+
+  if ( Commit_helper( fd, true ) < 0 ) {
     perror("Close");
     return(ErrorReturn);
   }

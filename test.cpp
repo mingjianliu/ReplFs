@@ -102,18 +102,15 @@ void testlength(char * test){
 
 }
 
-void testvector(vector<int> test){
-  cout << test[0] << endl;
-  cout << test[1] << endl;
-  cout << test[2] << endl;
-  cout << test[3] << endl;
-  test.clear();
-}
-
 int main(){
-  uint32_t i=1;
-  i = i <<31;
-  cout << i << endl;
+  vector<int> test;
+  test.resize(3);
+  cout << test.size() << endl;
+  test.push_back(1);
+  cout << test.size() << endl;
+  test[2] = 4;
+  cout << test.size() << endl;
+  
    
   return 0;
 }

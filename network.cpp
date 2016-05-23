@@ -14,7 +14,8 @@
 static int theSocket;
 /* Use this socket address to send packets to the multi-cast group. */
 static Sockaddr groupAddr;
-static int ThePacketLoss;
+static int ThePacketLoss = 0;
+static int Port;
 
 void sendPacket(unsigned char packType, packetInfo packet){
 	if(random()%100 < ThePacketLoss)	return;
@@ -107,7 +108,7 @@ void netInit(){
 	
   	nullAddr.sin_family = AF_INET;
   	nullAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-  	nullAddr.sin_port = PORT;
+  	nullAddr.sin_port = Port;
   	if (bind(theSocket, (struct sockaddr *)&nullAddr, sizeof(nullAddr)) < 0)
   	  printf((char *)"netInit binding");
 	
@@ -194,7 +195,7 @@ Sockaddr *resolveHost(register char *name) {
   return (&sa);
 }
 
-void nextEvent(ReplFsEvent* event){
+void NextEvent(ReplFsEvent* event){
   static bool nextTimeoutInitialized = false;
   static struct timeval nextTimeout;
   if(!nextTimeoutInitialized){
