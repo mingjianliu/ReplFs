@@ -15,6 +15,7 @@
 #include <map>
 #include <iostream>
 #include <string.h>
+#include <stdint.h>
 
 using namespace std;
 
@@ -102,15 +103,15 @@ void testlength(char * test){
 
 }
 
+void test1(int test[3]){
+  cout<< test[2] << endl;
+  test[2] = 1;
+}
+
 int main(){
-  vector<int> test;
+  std::vector<int> test;
   test.resize(3);
-  cout << test.size() << endl;
-  test.push_back(1);
-  cout << test.size() << endl;
-  test[2] = 4;
-  cout << test.size() << endl;
-  
-   
+  test[0] = 1;
+  cout << test[2] << endl;
   return 0;
 }

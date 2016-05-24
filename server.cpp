@@ -21,6 +21,12 @@ static uint32_t serverId;
 
 static uint32_t serverId;
 
+struct data{
+  int offset;
+  char strData[MaxBlockLength];
+  int blockSize;
+};
+
 class client{
     uint32_t fd;
     uint32_t transaction;  
@@ -28,6 +34,7 @@ class client{
     uint32_t writeVector[4];
 
   public:
+  	uint8_t fileName[MAX_FILE_NAME_SIZE];
     client(){
       fd = 0;
       writeInfo.clear();
@@ -43,12 +50,13 @@ class client{
       return fd;
     }
 
-    void set_fd(uint32_t number){
+    void set_fd(uint32_t number, uint8_t name[MAX_FILE_NAME_SIZE]){
       fd = number;
+      strncpy((char*)fileName, (char*)name, strlen((char*)name));
     }
 
-    std::vector<data> readData(){
-      return writeInfo;
+    uint32_t* readData(){
+      return writeVector;
     }
 
     void writeData(uint32_t sequenceNO, data write){
@@ -77,14 +85,20 @@ class client{
       for(int i=0; i<4; i++){
       	writeVector[i] = 0;
       }
+      for(int i=0; i<MAX_FILE_NAME_SIZE; i++){
+      	fileName[i] = 0;
+      }
     }
 };
 
 static std::map<uint32_t,client> clients;
 
 int main(const int argc, char* argv[]){
+  //Generate serverID
   serverId = random();
   clients.clear();
+
+  //Get input arguments
   unsigned short portNum;
   int dropPercent;
   if(argc == 1){
@@ -110,6 +124,8 @@ int main(const int argc, char* argv[]){
   }
   ThePacketLoss = dropPercent;
   Port = portNum;
+
+  //Start network and receive packets
   netInit();
   printf("Server started!\n");
   ReplFsEvent event;
@@ -160,24 +176,69 @@ void handleInit(packetInfo packet){
 }
 
 void handleOpen(packetInfo packet){
-	
-	//Check whether file is already opened
-	//遍历所有client, if one match: if clientID = packet.clientID, return; if other client, return success = false
+	packetInfo outPacket;
+	outPacket.clientID = packet.clientID;
+	outPacket.serverId = serverId;
+	outPacket.fd = packet.fd;
+	outPacket.success = 1;
+	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
+	//Check whether the client exists & one file is already opened for that client
+	if(iter == clients.end()){
+		outPacket.success = 0;
+	}else{
 
+	  if(iter.second->get_fd() != 0){
+		  outPacket.success = 0;
+	  }
+	  else{
+	  	for( it=clients.begin(); it!=clients.end(); it++){
+		  if(it->second.get_fd()!=0 && strcmp((char*)it->second.fileName, (char*)packet.fileName, MAX_FILE_NAME_SIZE) == 0){
+			outPacket.success = 0;
+			break;
+		  }
+		}
+	  }
+	}
 	//if no one match, create one and return success = true
+	if(outPacket.success == 1){
+		//Update in clients
+		clients.find(packet.clientID)->second.set_fd(packet.fd, packet.fileName);
+	}
 
+	while(int i=0; i<10; i++){
+		sendPacket(OPENACK, packet);
+	}
 	
 }
 
 void handleWriteBlock(packetInfo packet){
+	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	//Save write information
-
+	if(iter == clients.end()){
+		return;
+	}else if(packet.transcationID == iter->second.getTranscation()){
+		data writeInfo;
+		writeInfo.offset = packet.byteOffset;
+		strncpy(writeInfo.strData, (char*)packet.buffer, MaxBlockLength);
+		writeInfo.blockSize = packet.blockSize;
+		iter->second.writeData(packet.writeNumber, writeInfo);
+	}
+	return;
 }
 
 void handleCheck(packetInfo packet){
-	//Check if all write is there
+	//Check if all writes are there
+	bool ready = true;
+	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
+	if(iter == clients.end())	return;
+	if(iter->second.get_fd() != packet.fd)	return;
+	if(iter->second.getTranscation() != packet.transcationID)	return;
 
+	uint32_t* writeVector = iter->second.readData();
 	//If some writes absent, send ResendRequest, and wait for writeblock
+	while(int i=0; i<=packet.writeNumber; i++){
+		
+	}
 
 	//Send Vote
 
