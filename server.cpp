@@ -19,8 +19,6 @@ static uint32_t serverId;
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
 
-static uint32_t serverId;
-
 struct data{
   int offset;
   char strData[MaxBlockLength];
@@ -32,15 +30,17 @@ class client{
     uint32_t transaction;  
     std::vector<data> writeInfo;
     uint32_t writeVector[4];
+    uint32_t seqno;
 
   public:
   	uint8_t fileName[MAX_FILE_NAME_SIZE];
+  	int nameLength;
+
     client(){
       fd = 0;
       writeInfo.clear();
       writeInfo.resize(128);
       transaction = 0;
-      currentWrite = 0;
       for(int i=0; i<4; i++){
       	writeVector[i] = 0;
       }
@@ -55,6 +55,14 @@ class client{
       strncpy((char*)fileName, (char*)name, strlen((char*)name));
     }
 
+    void setSeqNO(uint32_t number){
+    	seqno = number;
+    }
+
+    uint32_t getSeqNO(){
+    	return seqno;
+    }
+
     uint32_t* readData(){
       return writeVector;
     }
@@ -64,12 +72,17 @@ class client{
       writeVector[sequenceNO/32] &= 1<<(sequenceNO%32); 
     }
 
+    std::vector<data> getWriteInfo(){
+    	return writeInfo;
+    }
+
     uint32_t getTranscation(){
       return transaction;
     }
 
     void finish_transcation(){
       transaction++;
+      seqno = 0;
       writeInfo.clear();
       writeInfo.resize(128);
       for(int i=0; i<4; i++){
@@ -80,6 +93,7 @@ class client{
     void close(){
       fd = 0;
       transaction = 0;
+      seqno = 0;
       writeInfo.clear();
       writeInfo.resize(128);
       for(int i=0; i<4; i++){
@@ -88,6 +102,7 @@ class client{
       for(int i=0; i<MAX_FILE_NAME_SIZE; i++){
       	fileName[i] = 0;
       }
+      nameLength = 0;
     }
 };
 
@@ -202,7 +217,8 @@ void handleOpen(packetInfo packet){
 	//if no one match, create one and return success = true
 	if(outPacket.success == 1){
 		//Update in clients
-		clients.find(packet.clientID)->second.set_fd(packet.fd, packet.fileName);
+		iter->second.set_fd(packet.fd, packet.fileName);
+		iter->second.nameLength = packet.nameLength;
 	}
 
 	while(int i=0; i<10; i++){
@@ -235,22 +251,81 @@ void handleCheck(packetInfo packet){
 	if(iter->second.getTranscation() != packet.transcationID)	return;
 
 	uint32_t* writeVector = iter->second.readData();
+	packetInfo outPacket;
+	outPacket.clientID = packet.clientID;
+	outPacket.serverId = serverId;
+	outPacket.fd = packet.fd;
 	//If some writes absent, send ResendRequest, and wait for writeblock
-	while(int i=0; i<=packet.writeNumber; i++){
-		
+	if(!checkAllReceived(writeVector, packet.writeNumber)){
+		//Send resendrequest
+		for(int i=0; i<4; i++){
+			outPacket.writeVector[i] = *(writeVector+i);	
+		}
+		ReplFsEvent event;
+    	ReplFsPacket incoming;
+    	event.eventDetail = &incoming;
+		//Wait for all packets received 
+		while(!checkAllReceived(writeVector, packet.writeNumber)){
+  			NextEvent(&event);
+  			  //if recevied timeout interval, resend one
+  			if(event.eventType==EVENT_TIMEOUT){
+  			  	sendPacket(RESENDREQ, outPacket);
+  			}
+  			//if received initACK, save the serverID
+  			if(event.eventType==EVENT_INCOMING && incoming.type == WRITEBLOCK){
+  			    packetInfo info = receviePacket(incoming);
+  			    if(packet.clientID == info.clientID && iter->second.getTranscation() == info.transcationID && packet.fd == info.fd){
+  			    	handleWriteBlock(info);
+  			    }
+  			}
+		}
 	}
 
-	//Send Vote
+	//All writeblocks are arrived. Send Vote
+	iter->second.setSeqNO(packet.writeNumber);
+	outPacket.vote = true;
+	sendPacket(VOTE, outPacket);
+}
 
+bool checkAllReceived(uint32_t* writeVector, uint32_t writeNumber){
+	while(uint32_t i=0; i<writeNumber; i++){
+		if(*(writeVector+i/32) & 1<<(i/32) == 0)
+			return false;
+	}
+	return true;
 }
 
 void handleCommit(packetInfo packet){
-	//Write all blocks into file
+	//get file name
+	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
+	if(iter == clients.end())	return;
+	if(iter->second.get_fd() != packet.fd)	return;
+	if(iter->second.getTranscation() != packet.transcationID)	return;
+	std::string filePath;
+	filePath.assign(iter->second.fileName, iter->second.nameLength);
+	filePath = path + filePath;
+ 	int fd = open(filePath.c_str(),O_WRONLY | O_CREAT, 0777);
+ 	std::vector<data> writeInfo = iter->second.getWriteInfo();
+ 	for(uint32_t i=0; i<iter->second.getSeqNO(); i++){
+ 		lseek(fd, writeInfo[i].offset, SEEK_SET);
+ 		write(fd, writeInfo[i].strData, writeInfo[i].blockSize);
+ 	}
+ 	close(fd);
+	//If close == true, close this file locally and do some clean up stuff
+ 	iter->second.finish_transcation();
+ 	if(packet.close == 1){
+ 		iter->second.close();
+ 	}
 
 }
 
 void handleAbort(packetInfo packet){
 	//Advance transcationID and abort all writes
+	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
+	if(iter == clients.end())	return;
+	if(iter->second.get_fd() != packet.fd)	return;
+	if(iter->second.getTranscation() != packet.transcationID)	return;
+	iter->second.finish_transcation();
 }
 
 

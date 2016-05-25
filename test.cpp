@@ -103,15 +103,26 @@ void testlength(char * test){
 
 }
 
-void test1(int test[3]){
-  cout<< test[2] << endl;
-  test[2] = 1;
+int* test1(){
+  int test[3];
+  test[2] = 12345;
+  return test;
 }
 
+struct testdata{
+  int data;
+};
+
 int main(){
-  std::vector<int> test;
+  std::vector<testdata> test;
   test.resize(3);
-  test[0] = 1;
-  cout << test[2] << endl;
-  return 0;
+  testdata data1;
+  data1.data = 1;
+  testdata data3;
+  data3.data = 3;
+  test[0] = data1;
+  test[2] = data3;
+  for(int i=0; i<3; i++){
+    cout << test[i].data << endl;
+  }
 }
