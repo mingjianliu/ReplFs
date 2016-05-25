@@ -45,9 +45,9 @@ extern int OpenFile( char*);
 extern int WriteBlock( int, char*, int, int);
 extern int Commit(int);
 extern int Commit_helper( int, bool);
-extern void resendPacket(std::vector<data>, uint32_t[]);
+//extern void resendPacket(std::vector<data>, uint32_t[]);
 extern int Abort( int);
-extern void cleanServer(std::set<uint32_t>);
+//extern void cleanServer(std::set<uint32_t>);
 extern int CloseFile( int);
 
 #ifdef __cplusplus

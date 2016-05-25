@@ -10,7 +10,7 @@
 #define MaxBlockLength 512
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
-#define MAX_WRITE
+#define MAX_WRITE 128
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -163,9 +163,13 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
 }
 
 /* ------------------------------------------------------------------ */
+void cleanServer(std::set<uint32_t> server){
+    for(std::set<uint32_t>::iterator iter = server.begin(); iter!=server.end(); iter++){
+      client::instance()->servers.erase(iter->first);
+    }
+}
 
-int
-OpenFile( char * fileName ) {
+int OpenFile( char * fileName ) {
   ASSERT( client::instance()->servers.size() != 0);
   ASSERT( fileName );
 #ifdef DEBUG
@@ -272,6 +276,20 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
 
 /* ------------------------------------------------------------------ */
 
+void resendPacket(std::vector<data> data, uint32_t writeVector[]){
+  for(int i=0; i<4; i++){
+    int compare = 1;
+    for(int j=0; j<32; j++){
+      if(!(compare & writeVector[i])){
+        //Send this packet by i*32 + j
+        WriteBlock(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize);
+      }
+
+      compare = compare << 1;
+    }
+  }
+}
+
 int Commit(int fd){
   return Commit_helper(fd, false);
 }
@@ -374,20 +392,6 @@ Commit_helper( int fd, bool close) {
   return( NormalReturn );
 }
 
-void resendPacket(std::vector<data> data, uint32_t writeVector[]){
-  for(int i=0; i<4; i++){
-    int compare = 1;
-    for(int j=0; j<32; j++){
-      if(!(compare & writeVector[i])){
-        //Send this packet by i*32 + j
-        WriteBlock(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize);
-      }
-
-      compare << 1;
-    }
-  }
-}
-
 /* ------------------------------------------------------------------ */
 
 int
@@ -435,15 +439,6 @@ Abort( int fd )
 
   return(NormalReturn);
 }
-
-void cleanServer(std::set<uint32_t> server){
-  if(server.size()!=0){
-    for(uint32_t each: server){
-      client::instance()->servers.erase(each);
-    }
-  }
-}
-
 
 /* ------------------------------------------------------------------ */
 
