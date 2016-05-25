@@ -11,8 +11,8 @@ INCDIR	= -I$(H)
 LIBDIRS = -L$(C_DIR)
 LIBS    = -lclientReplFs
 
-CLIENT_OBJECTS = client.o network.o 
-SERVER_OBJECTS = server.o network.o
+CLIENT_OBJECTS = client.o
+SERVER_OBJECTS = server.o
 
 all:	appl server
 

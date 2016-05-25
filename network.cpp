@@ -240,11 +240,6 @@ static void subtractTimevals(const struct timeval* one, const struct timeval* tw
 
 
 
-int main(){
-	return 0;
-}
-
-
 
 
 

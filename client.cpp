@@ -131,7 +131,7 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
   //Send out the init packet
   packetInfo packet;
   packet.clientID = client::instance()->get_ID();
-  Port = 44032;
+  Port = portNum;
   netInit();
   int resend = 0;
   sendPacket(INIT, packet);
@@ -165,7 +165,7 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
 /* ------------------------------------------------------------------ */
 void cleanServer(std::set<uint32_t> server){
     for(std::set<uint32_t>::iterator iter = server.begin(); iter!=server.end(); iter++){
-      client::instance()->servers.erase(iter->first);
+      client::instance()->servers.erase(*iter);
     }
 }
 

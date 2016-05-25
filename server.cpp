@@ -18,6 +18,9 @@ static uint32_t serverId;
 
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
+#define MaxBlockLength 512
+#define DEFAULT_PORT 44032
+#define MAX_FILE_NAME_SIZE 128
 
 struct data{
   int offset;
@@ -108,6 +111,14 @@ class client{
 
 static std::map<uint32_t,client> clients;
 
+void handleInit(packetInfo packet);
+void handleOpen(packetInfo packet);
+void handleWriteBlock(packetInfo packet);
+void handleCheck(packetInfo packet);
+bool checkAllReceived(uint32_t* writeVector, uint32_t writeNumber);
+void handleCommit(packetInfo packet);
+void handleAbort(packetInfo packet);
+
 int main(const int argc, char* argv[]){
   //Generate serverID
   serverId = random();
@@ -134,7 +145,7 @@ int main(const int argc, char* argv[]){
     }
     //For test
     if(argc >=8){
-    	servedId = argv[7];
+    	serverId = atoi(argv[7]);
     }
   }
   ThePacketLoss = dropPercent;
@@ -148,7 +159,7 @@ int main(const int argc, char* argv[]){
   event.eventDetail = &incoming;
   while(true){
     NextEvent(&event);
-    if(event.type == EVENT_INCOMING){
+    if(event.eventType == EVENT_INCOMING){
       packetInfo packet = receviePacket(incoming);
       switch(incoming.type){
         case INIT:
@@ -157,7 +168,7 @@ int main(const int argc, char* argv[]){
         case OPEN:
           handleOpen(packet);
           break;
-        case WRITE_LOCK:
+        case WRITEBLOCK:
           handleWriteBlock(packet);
           break;
         case CHECK:
@@ -179,12 +190,12 @@ int main(const int argc, char* argv[]){
 void handleInit(packetInfo packet){
 	if(clients.find(packet.clientID) == clients.end()){
 		//Add client
-		clients.insert(std::pair<uint32_t,client>(packet.clientID, new client()));
+		clients.insert(std::pair<uint32_t,client>(packet.clientID, *new client()));
 		//Respond with INITACK	
 		packetInfo outPacket;
 		outPacket.clientID = packet.clientID;
-		outPacket.serverId = serverId;
-		while(int i=0; i<10; i++){
+		outPacket.serverID = serverId;
+		for(int i=0; i<10; i++){
 			sendPacket(INITACK, packet);
 		}
 	}
@@ -193,7 +204,7 @@ void handleInit(packetInfo packet){
 void handleOpen(packetInfo packet){
 	packetInfo outPacket;
 	outPacket.clientID = packet.clientID;
-	outPacket.serverId = serverId;
+	outPacket.serverID = serverId;
 	outPacket.fd = packet.fd;
 	outPacket.success = 1;
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
@@ -202,12 +213,12 @@ void handleOpen(packetInfo packet){
 		outPacket.success = 0;
 	}else{
 
-	  if(iter.second->get_fd() != 0){
+	  if(iter->second.get_fd() != 0){
 		  outPacket.success = 0;
 	  }
 	  else{
-	  	for( it=clients.begin(); it!=clients.end(); it++){
-		  if(it->second.get_fd()!=0 && strcmp((char*)it->second.fileName, (char*)packet.fileName, MAX_FILE_NAME_SIZE) == 0){
+	  	for(std::map<uint32_t,client>::iterator it=clients.begin(); it!=clients.end(); it++){
+		  if(it->second.get_fd()!=0 && strcmp((char*)it->second.fileName, (char*)packet.fileName) == 0){
 			outPacket.success = 0;
 			break;
 		  }
@@ -221,7 +232,7 @@ void handleOpen(packetInfo packet){
 		iter->second.nameLength = packet.nameLength;
 	}
 
-	while(int i=0; i<10; i++){
+	for(int i=0; i<10; i++){
 		sendPacket(OPENACK, packet);
 	}
 	
@@ -232,7 +243,7 @@ void handleWriteBlock(packetInfo packet){
 	//Save write information
 	if(iter == clients.end()){
 		return;
-	}else if(packet.transcationID == iter->second.getTranscation()){
+	}else if(packet.transactionID == iter->second.getTranscation()){
 		data writeInfo;
 		writeInfo.offset = packet.byteOffset;
 		strncpy(writeInfo.strData, (char*)packet.buffer, MaxBlockLength);
@@ -248,12 +259,12 @@ void handleCheck(packetInfo packet){
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	if(iter == clients.end())	return;
 	if(iter->second.get_fd() != packet.fd)	return;
-	if(iter->second.getTranscation() != packet.transcationID)	return;
+	if(iter->second.getTranscation() != packet.transactionID)	return;
 
 	uint32_t* writeVector = iter->second.readData();
 	packetInfo outPacket;
 	outPacket.clientID = packet.clientID;
-	outPacket.serverId = serverId;
+	outPacket.serverID = serverId;
 	outPacket.fd = packet.fd;
 	//If some writes absent, send ResendRequest, and wait for writeblock
 	if(!checkAllReceived(writeVector, packet.writeNumber)){
@@ -274,7 +285,7 @@ void handleCheck(packetInfo packet){
   			//if received initACK, save the serverID
   			if(event.eventType==EVENT_INCOMING && incoming.type == WRITEBLOCK){
   			    packetInfo info = receviePacket(incoming);
-  			    if(packet.clientID == info.clientID && iter->second.getTranscation() == info.transcationID && packet.fd == info.fd){
+  			    if(packet.clientID == info.clientID && iter->second.getTranscation() == info.transactionID && packet.fd == info.fd){
   			    	handleWriteBlock(info);
   			    }
   			}
@@ -288,7 +299,7 @@ void handleCheck(packetInfo packet){
 }
 
 bool checkAllReceived(uint32_t* writeVector, uint32_t writeNumber){
-	while(uint32_t i=0; i<writeNumber; i++){
+	for(uint32_t i=0; i<writeNumber; i++){
 		if(*(writeVector+i/32) & 1<<(i/32) == 0)
 			return false;
 	}
@@ -300,7 +311,7 @@ void handleCommit(packetInfo packet){
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	if(iter == clients.end())	return;
 	if(iter->second.get_fd() != packet.fd)	return;
-	if(iter->second.getTranscation() != packet.transcationID)	return;
+	if(iter->second.getTranscation() != packet.transactionID)	return;
 	std::string filePath;
 	filePath.assign(iter->second.fileName, iter->second.nameLength);
 	filePath = path + filePath;
@@ -324,7 +335,7 @@ void handleAbort(packetInfo packet){
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	if(iter == clients.end())	return;
 	if(iter->second.get_fd() != packet.fd)	return;
-	if(iter->second.getTranscation() != packet.transcationID)	return;
+	if(iter->second.getTranscation() != packet.transactionID)	return;
 	iter->second.finish_transcation();
 }
 
