@@ -28,8 +28,6 @@
 #define TRANSACTRES 13
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
-
-#define PORT 44032
 #define THEGROUP 0xe0010101
 
 

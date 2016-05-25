@@ -10,6 +10,7 @@
 #define MaxBlockLength 512
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
+#define MAX_WRITE
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -29,6 +30,12 @@
 static int initialized = 0;
 
 /* ------------------------------------------------------------------ */
+
+struct data{
+  int offset;
+  char strData[MaxBlockLength];
+  int blockSize;
+};
 
 //The singleton client class
 class client{
@@ -223,6 +230,10 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
   printf( "WriteBlock: Writing FD=%d, Offset=%d, Length=%d\n",
 	fd, byteOffset, blockSize );
 #endif
+
+  if(client::instance()->getSequenceNO() >= MAX_WRITE){
+    return ErrorReturn;
+  }
 
   packetInfo packet;
   packet.clientID = client::instance()->get_ID();

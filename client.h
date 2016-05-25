@@ -10,6 +10,8 @@ enum {
   ErrorReturn = -1,
 };
 
+#include <stdbool.h>
+
 /* ------------------------------------------------------------------ */
 
 #ifdef ASSERT_DEBUG
@@ -36,16 +38,6 @@ extern "C" {
 //extern int Abort(int fd);
 //extern int CloseFile(int fd);
 
-#ifdef __cplusplus
-}
-#endif
-
-struct data{
-  int offset;
-  char strData[MaxBlockLength];
-  int blockSize;
-};
-
 /* ------------------------------------------------------------------ */
 
 extern int InitReplFs( unsigned short, int, int);
@@ -58,7 +50,9 @@ extern int Abort( int);
 extern void cleanServer(std::set<uint32_t>);
 extern int CloseFile( int);
 
-
+#ifdef __cplusplus
+}
+#endif
 
 
 
