@@ -268,10 +268,6 @@ WriteBlock_Helper( int fd, char * buffer, int byteOffset, int blockSize, bool is
   strncpy(write.strData, buffer, strlen(buffer));
   client::instance()->writeData(write);
   
-  ReplFsEvent event;
-  ReplFsPacket incoming;
-  event.eventDetail = &incoming;
-
   while(resend < MAX_RESEND) {
     ++resend;
     sendPacket(WRITEBLOCK, packet);
@@ -293,8 +289,7 @@ void resendPacket(std::vector<data> data, uint32_t writeVector[], uint32_t Seque
       if(!(compare & writeVector[i])){
         if(i*32+j>=SequenceNO)  return;
         //Send this packet by i*32 + j
-        cout<<"Sending packet number "<<i*32+j<<endl;
-        WriteBlock(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize, true);
+        WriteBlock_Helper(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize, true);
       }
 
       compare = compare << 1;

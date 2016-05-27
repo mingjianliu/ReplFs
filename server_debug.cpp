@@ -10,7 +10,6 @@
 #include <sys/time.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <algorithm>
 #include "network.cpp"
 
 //Define data structure of clients
@@ -79,7 +78,9 @@ class client{
     void writeData(uint32_t sequenceNO, data write){
       writeInfo[sequenceNO] = write;
       writeVector[sequenceNO/32] |= 1<<(sequenceNO%32); 
-      seqno = std::max(sequenceNO, seqno);
+      seqno = max(sequenceNO, seqno);
+      cout<<sequenceNO<<endl;
+      cout<<max(sequenceNO, seqno)<<endl;
     }
 
     std::vector<data> getWriteInfo(){
@@ -225,11 +226,11 @@ void handleOpen(packetInfo packet){
 	  }
 	  else{
 	  	for(std::map<uint32_t,client>::iterator it=clients.begin(); it!=clients.end(); it++){
-		  if(it->second.get_fd()!=0 && strcmp((char*)it->second.fileName, (char*)packet.fileName) == 0){
-			outPacket.success = 0;
-			break;
+		    if(it->second.get_fd()!=0 && strcmp((char*)it->second.fileName, (char*)packet.fileName) == 0){
+			   outPacket.success = 0;
+			   break;
+		    }
 		  }
-		}
 	  }
 	}
 	//if no one match, create one and return success = true
