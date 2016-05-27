@@ -203,11 +203,10 @@ int OpenFile( char * fileName ) {
   else  return( fd );
 }
 
-/* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */ 
 
 int
-WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
-  //char strError[64];
+WriteBlock_Helper( int fd, char * buffer, int byteOffset, int blockSize, bool isResend) {
   int bytesWritten = blockSize;
 
   ASSERT( fd >= 0 );
@@ -248,20 +247,21 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
     write.strData[i] = 0;
   }
   strncpy(write.strData, buffer, strlen(buffer));
+  if(!isResend)
   client::instance()->writeData(write);
   
   ReplFsEvent event;
   ReplFsPacket incoming;
   event.eventDetail = &incoming;
 
-  debug(packet);  
-  cout<<"Current write number is "<<client::instance()->getSequenceNO()<<endl;
-  std::vector<data> Data = client::instance()->readData();
-  for(int i=0; i<Data.size(); i++){
-  	cout<<"Offset is "<<Data[i].offset<<endl;
-  	cout<<"Blocksize is "<<Data[i].blockSize<<endl;
-  	cout<<"Text is: \t"<<Data[i].strData<<endl;
-  }
+  //debug(packet);  
+  //cout<<"Current write number is "<<client::instance()->getSequenceNO()<<endl;
+  //std::vector<data> Data = client::instance()->readData();
+  //for(int i=0; i<Data.size(); i++){
+  //	cout<<"Offset is "<<Data[i].offset<<endl;
+  //	cout<<"Blocksize is "<<Data[i].blockSize<<endl;
+  //	cout<<"Text is: \t"<<Data[i].strData<<endl;
+  //}
 
   return( bytesWritten );
 
@@ -271,15 +271,21 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
 
 }
 
+int WriteBlock( int fd, char * buffer, int byteOffset, int blockSize) {
+  return WriteBlock_Helper(fd, buffer, byteOffset, blockSize, false);
+} 
+
 /* ------------------------------------------------------------------ */
 
-void resendPacket(std::vector<data> data, uint32_t writeVector[]){
+void resendPacket(std::vector<data> data, uint32_t writeVector[], uint32_t SequenceNO){
   for(int i=0; i<4; i++){
     int compare = 1;
     for(int j=0; j<32; j++){
       if(!(compare & writeVector[i])){
+      	if(i*32+j>=SequenceNO)	return;
         //Send this packet by i*32 + j
-        WriteBlock(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize);
+        cout<<"Sending packet number "<<i*32+j<<endl;
+        WriteBlock_Helper(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize, true);
       }
 
       compare = compare << 1;
@@ -315,45 +321,45 @@ Commit_helper( int fd, bool close) {
   packet.fd = client::instance()->get_fd();
   packet.transactionID = client::instance()->getTranscation();
   packet.writeNumber = client::instance()->getSequenceNO();
-  sendPacket(CHECK, packet);
+  //debug(packet);
 
-  ReplFsEvent event;
-  ReplFsPacket incoming;
-  event.eventDetail = &incoming;
-  int resend = 0;
+ 
   std::set<uint32_t> server  = client::instance()->servers;
   bool abort = false;
 
-  while(resend < MAX_RESEND && server.size() != 0){
-    NextEvent(&event);
-    //if recevied timeout interval, resend one
-    if(event.eventType==EVENT_TIMEOUT){
-      ++resend;
-      sendPacket(CHECK, packet);
-    }
-    if(event.eventType==EVENT_INCOMING){
-      packetInfo info = receviePacket(incoming);
-      if(incoming.type == VOTE && server.find(info.serverID)!=server.end()){
-        //if vote = yes, delete it in servers; if vote = no, call abort later, and delete it in server
-        if(info.vote == 0)
-          abort = true;
-        server.erase(info.serverID);
-      }
+  // while(resend < MAX_RESEND && server.size() != 0){
+  //   NextEvent(&event);
+  //   //if recevied timeout interval, resend one
+  //   if(event.eventType==EVENT_TIMEOUT){
+  //     ++resend;
+  //     sendPacket(CHECK, packet);
+  //   }
+  //   if(event.eventType==EVENT_INCOMING){
+  //     packetInfo info = receviePacket(incoming);
+  //     if(incoming.type == VOTE && server.find(info.serverID)!=server.end()){
+  //       //if vote = yes, delete it in servers; if vote = no, call abort later, and delete it in server
+  //       if(info.vote == 0)
+  //         abort = true;
+  //       server.erase(info.serverID);
+  //     }
 
-      if(incoming.type == RESENDREQ && server.find(info.serverID)!=server.end() && info.clientID == packet.clientID && info.fd == packet.fd){
-        //resend all writes needed
-        resendPacket(writeinfo, info.writeVector);
-        resend = 0;
-      }
-    }
-  }
+  //     if(incoming.type == RESENDREQ && server.find(info.serverID)!=server.end() && info.clientID == packet.clientID && info.fd == packet.fd){
+  //       //resend all writes needed
+  //       resendPacket(writeinfo, info.writeVector);
+  //       resend = 0;
+  //     }
+  //   }
+  // }
+
+  uint32_t vector[4];
+  vector[0] = 0;
+  vector[1] = 0;
+  vector[2] = 0;
+  vector[3] = 0;
+  resendPacket(writeinfo, vector, packet.writeNumber);
 
   //If any server left, regard them as dead, delete in client::instance.
   cleanServer(server); 
-
-  if(client::instance()->servers.size()==0)
-    //should close itself
-    return NormalReturn;
 
   //If abort == True, call abort and exit with ErrorReturn
   if(abort == true){
@@ -364,25 +370,25 @@ Commit_helper( int fd, bool close) {
 	/****************/
 	/* Commit Phase */
 	/****************/
-  resend = 0;
+  //resend = 0;
   packet.close = (close)? 1:0;
   server = client::instance()->servers;
-  sendPacket(COMMIT, packet);
-  while(resend < MAX_RESEND && server.size() != 0){
-    NextEvent(&event);
-    //if recevied timeout interval, resend one
-    if(event.eventType==EVENT_TIMEOUT){
-      ++resend;
-      sendPacket(COMMIT, packet);
-    }
-    if(event.eventType==EVENT_INCOMING && incoming.type == COMMITACK ){
-      packetInfo info = receviePacket(incoming);
-      //If response with commitACK, client and transcation matches
-      if(info.clientID == packet.clientID && info.transactionID == packet.transactionID && info.fd == packet.fd && server.find(info.serverID)!=server.end()){
-        server.erase(info.serverID);
-      }
-    }
-  }
+  //debug(packet);
+  // while(resend < MAX_RESEND && server.size() != 0){
+  //   NextEvent(&event);
+  //   //if recevied timeout interval, resend one
+  //   if(event.eventType==EVENT_TIMEOUT){
+  //     ++resend;
+  //     sendPacket(COMMIT, packet);
+  //   }
+  //   if(event.eventType==EVENT_INCOMING && incoming.type == COMMITACK ){
+  //     packetInfo info = receviePacket(incoming);
+  //     //If response with commitACK, client and transcation matches
+  //     if(info.clientID == packet.clientID && info.transactionID == packet.transactionID && info.fd == packet.fd && server.find(info.serverID)!=server.end()){
+  //       server.erase(info.serverID);
+  //     }
+  //   }
+  // }
 
   cleanServer(server); 
 
@@ -415,22 +421,7 @@ Abort( int fd )
   int resend = 0;
   std::set<uint32_t> server  = client::instance()->servers;
 
-  while(resend < MAX_RESEND && server.size() != 0){
-    NextEvent(&event);
-    //if recevied timeout interval, resend one
-    if(event.eventType==EVENT_TIMEOUT){
-      ++resend;
-      sendPacket(ABORT, packet);
-    }
-    if(event.eventType==EVENT_INCOMING){
-      packetInfo info = receviePacket(incoming);
-      if(incoming.type == ABORTACK && server.find(info.serverID)!=server.end() && info.clientID==packet.clientID
-         && info.fd==packet.fd && info.transactionID==packet.transactionID){
-        server.erase(info.serverID);
-      }
-
-    }
-  }
+  debug(packet);
   
   cleanServer(server);  
 
@@ -472,6 +463,8 @@ int main(){
 	char buffer[20] = "Hello World!";
 	WriteBlock(fd, buffer, 0, 20);
 	WriteBlock(fd, "Hello Again!", 0, 20);
+	//Commit(fd);
+	Abort(fd);
 }
 
 

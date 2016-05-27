@@ -284,6 +284,7 @@ void handleCheck(packetInfo packet){
     	ReplFsPacket incoming;
     	event.eventDetail = &incoming;
 		//Wait for all packets received 
+		//writeNumber is 10 if there are 9 writes
 		while(!checkAllReceived(writeVector, packet.writeNumber)){
   			NextEvent(&event);
   			  //if recevied timeout interval, resend one

@@ -224,7 +224,7 @@ int OpenFile( char * fileName ) {
 /* ------------------------------------------------------------------ */
 
 int
-WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
+WriteBlock_Helper( int fd, char * buffer, int byteOffset, int blockSize, bool isResend) {
   //char strError[64];
   int bytesWritten = blockSize;
 
@@ -280,15 +280,21 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
   return( bytesWritten );
 }
 
+int WriteBlock( int fd, char * buffer, int byteOffset, int blockSize) {
+  return WriteBlock_Helper(fd, buffer, byteOffset, blockSize, false);
+}  
+
 /* ------------------------------------------------------------------ */
 
-void resendPacket(std::vector<data> data, uint32_t writeVector[]){
+void resendPacket(std::vector<data> data, uint32_t writeVector[], uint32_t SequenceNO){
   for(int i=0; i<4; i++){
     int compare = 1;
     for(int j=0; j<32; j++){
       if(!(compare & writeVector[i])){
+        if(i*32+j>=SequenceNO)  return;
         //Send this packet by i*32 + j
-        WriteBlock(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize);
+        cout<<"Sending packet number "<<i*32+j<<endl;
+        WriteBlock(client::instance()->get_fd(), data[i*32+j].strData, data[i*32+j].offset, data[i*32+j].blockSize, true);
       }
 
       compare = compare << 1;
@@ -351,7 +357,7 @@ Commit_helper( int fd, bool close) {
 
       if(incoming.type == RESENDREQ && server.find(info.serverID)!=server.end() && info.clientID == packet.clientID && info.fd == packet.fd){
         //resend all writes needed
-        resendPacket(writeinfo, info.writeVector);
+        resendPacket(writeinfo, info.writeVector, packet.writeNumber);
         resend = 0;
       }
     }
