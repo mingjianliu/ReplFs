@@ -6,7 +6,7 @@
 /****************/
 
 #define DEBUG
-#define MAX_RESEND 10
+#define MAX_RESEND 30
 #define MaxBlockLength 512
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
