@@ -241,7 +241,6 @@ void handleOpen(packetInfo packet){
 		iter->second.set_fd(packet.fd, packet.fileName);
 		iter->second.nameLength = packet.nameLength;
 	}
-  printf("success is %d\n", outPacket.success);
 
 	for(int i=0; i<10; i++){
 		sendPacket(OPENACK, outPacket);
@@ -268,8 +267,6 @@ void handleWriteBlock(packetInfo packet){
 
 void handleCheck(packetInfo packet){
 
-  printf( "Handle check\n");
-
 	//Check if all writes are there
 	bool ready = true;
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
@@ -282,16 +279,13 @@ void handleCheck(packetInfo packet){
 	if(iter->second.getTranscation() != packet.transactionID)
   	return;
 
-  printf("test point 0\n");
 	uint32_t* writeVector = iter->second.readData();
 	packetInfo outPacket;
 	outPacket.clientID = packet.clientID;
 	outPacket.serverID = serverId;
 	outPacket.fd = packet.fd;
-  printf("test point1\n");
 	//If some writes absent, send ResendRequest, and wait for writeblock
 	if(!checkAllReceived(writeVector, packet.writeNumber)){
-    printf("not received all packets!\n");
 		//Send resendrequest
 		for(int i=0; i<4; i++){
 			outPacket.writeVector[i] = *(writeVector+i);	
@@ -333,8 +327,6 @@ bool checkAllReceived(uint32_t* writeVector, uint32_t writeNumber){
 
 void handleCommit(packetInfo packet){
 
-  printf( "Handle commit\n");
-
 	//get file name
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	if(iter == clients.end())	return;
@@ -353,7 +345,6 @@ void handleCommit(packetInfo packet){
 	//If close == true, close this file locally and do some clean up stuff
  	iter->second.finish_transcation();
  	if(packet.close == 1){
-    printf("close is %d", packet.close);
  		iter->second.close();
  	}
 
@@ -363,12 +354,9 @@ void handleCommit(packetInfo packet){
   outPacket.fd = packet.fd;
   outPacket.transactionID = packet.transactionID;
   sendPacket(COMMITACK, outPacket);
-  printf("finish this commit\n");
 }
 
 void handleAbort(packetInfo packet){
-
-  printf( "Handle abort\n");
 
 	//Advance transcationID and abort all writes
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
@@ -383,7 +371,6 @@ void handleAbort(packetInfo packet){
   outPacket.fd = packet.fd;
   outPacket.fd = packet.transactionID;
   sendPacket(ABORTACK, outPacket);
-  printf("send ABORTACK\n");
 }
 
 
