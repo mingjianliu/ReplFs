@@ -24,8 +24,10 @@
 #include <set>
 #include <map>
 #include <iostream>
-#include "network.cpp"
 #include "client.h"
+#include <cstring>
+#include "network.cpp"
+using namespace std;
 
 static int initialized = 0;
 
@@ -114,6 +116,28 @@ class client{
 
 client *client::client_singleton = 0;
 
+void debug(packetInfo packet){
+	  cout<<"The clientID is "<<packet.clientID<<endl;
+      cout<<"The serverID is "<<packet.serverID<<endl;
+      cout<<"The FD is "<<packet.fd<<endl;
+      cout<<"The filename is "<<(char*)packet.fileName<<endl;
+      cout<<"The file length is "<<packet.nameLength<<endl;
+	  cout<<"The transactionID is "<<packet.transactionID<<endl;
+	  cout<<"The transactionStatue is "<<packet.transactionStatue<<endl;
+	  cout<<"The writeNumber is "<<packet.writeNumber<<endl;
+	  cout<<"The byteOffset is "<<packet.byteOffset<<endl;
+	  cout<<"The blockSize is "<<packet.blockSize<<endl;
+	  cout<<"The success is "<<packet.success<<endl;
+	  cout<<"The vote is "<<packet.vote<<endl;
+	  cout<<"The close is "<<packet.close<<endl;
+	  cout<<"The writeVector 0 is "<<packet.writeVector[0]<<endl;
+	  cout<<"The writeVector 1 is "<<packet.writeVector[1]<<endl;
+	  cout<<"The writeVector 2 is "<<packet.writeVector[2]<<endl;
+	  cout<<"The writeVector 3 is "<<packet.writeVector[3]<<endl;
+}
+
+
+
 int
 InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
   if(initialized != 0) 
@@ -136,31 +160,8 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
   Port = portNum;
   netInit();
   int resend = 0;
-  sendPacket(INIT, packet);
-
-  ReplFsEvent event;
-  ReplFsPacket incoming;
-  event.eventDetail = &incoming;
-
-  while(resend < MAX_RESEND && client::instance()->servers.size() != numServers){
-    NextEvent(&event);
-    //if recevied timeout interval, resend one
-    if(event.eventType==EVENT_TIMEOUT){
-      ++resend;
-      sendPacket(INIT, packet);
-    }
-    //if received initACK, save the serverID
-    if(event.eventType==EVENT_INCOMING && incoming.type == INITACK){
-      packetInfo info = receviePacket(incoming);
-      if(info.clientID == client::instance()->get_ID()){
-        client::instance()->servers.insert(info.serverID);
-      }
-    }
-  }  
-
-  if(resend == MAX_RESEND)
-    return (ErrorReturn);
-
+  //cout<<"Send clientID "<<client::instance()->get_ID()<<endl;
+  //debug(packet);
   return( NormalReturn );  
 }
 
@@ -172,8 +173,8 @@ void cleanServer(std::set<uint32_t> server){
 }
 
 int OpenFile( char * fileName ) {
-  ASSERT( client::instance()->servers.size() != 0);
-  ASSERT( fileName );
+  //ASSERT( client::instance()->servers.size() != 0);
+  //ASSERT( fileName );
 #ifdef DEBUG
   printf( "OpenFile: Opening File '%s'\n", fileName );
 #endif
@@ -192,31 +193,12 @@ int OpenFile( char * fileName ) {
     packet.fileName[i] = 0;
   }
   strncpy((char*)packet.fileName, fileName, strlen(fileName));
-  sendPacket(OPEN, packet);
-  ReplFsEvent event;
-  ReplFsPacket incoming;
-  event.eventDetail = &incoming;
-  int resend = 0;
+  //debug(packet);
+
   std::set<uint32_t> server  = client::instance()->servers;
-  while(resend < MAX_RESEND && server.size() != 0){
-    NextEvent(&event);
-    //if recevied timeout interval, resend one
-    if(event.eventType==EVENT_TIMEOUT){
-      ++resend;
-      sendPacket(OPEN, packet);
-    }
-    //if received initACK, save the serverID
-    if(event.eventType==EVENT_INCOMING && incoming.type == OPENACK){
-      packetInfo info = receviePacket(incoming);
-      if(info.clientID == client::instance()->get_ID() && info.fd == fd && server.find(info.serverID)!=server.end() ){
-        server.erase(info.serverID);
-        if(info.success == 0) fail = true;
-      }
-    }
-  }  
 
   cleanServer(server); 
-
+  //cout<<"Server size is "<<server.size()<<endl;
   if(fail)  return -1;
   else  return( fd );
 }
@@ -241,6 +223,7 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
 #endif
 
   if(client::instance()->getSequenceNO() >= MAX_WRITE){
+  	cout<<"Error, max write number reached!"<<endl;
     return ErrorReturn;
   }
 
@@ -261,7 +244,6 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
   data write;
   write.offset = byteOffset;
   write.blockSize = blockSize;
-  //need to clear write.strData
   for(int i=0; i<MaxBlockLength; i++){
     write.strData[i] = 0;
   }
@@ -272,12 +254,21 @@ WriteBlock( int fd, char * buffer, int byteOffset, int blockSize ) {
   ReplFsPacket incoming;
   event.eventDetail = &incoming;
 
-  while(resend < MAX_RESEND) {
-    ++resend;
-    sendPacket(WRITEBLOCK, packet);
-  }  
+  debug(packet);  
+  cout<<"Current write number is "<<client::instance()->getSequenceNO()<<endl;
+  std::vector<data> Data = client::instance()->readData();
+  for(int i=0; i<Data.size(); i++){
+  	cout<<"Offset is "<<Data[i].offset<<endl;
+  	cout<<"Blocksize is "<<Data[i].blockSize<<endl;
+  	cout<<"Text is: \t"<<Data[i].strData<<endl;
+  }
 
   return( bytesWritten );
+
+  //send the writeblock packet 10 times and don't wait for response
+
+
+
 }
 
 /* ------------------------------------------------------------------ */
@@ -473,6 +464,15 @@ CloseFile( int fd ) {
 
 /* ------------------------------------------------------------------ */
 
+
+int main(){
+	InitReplFs(5018, 0, 1);
+	char filename[12] = "testfile";
+	int fd = OpenFile(filename);
+	char buffer[20] = "Hello World!";
+	WriteBlock(fd, buffer, 0, 20);
+	WriteBlock(fd, "Hello Again!", 0, 20);
+}
 
 
 

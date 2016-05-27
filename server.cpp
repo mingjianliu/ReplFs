@@ -47,6 +47,10 @@ class client{
       for(int i=0; i<4; i++){
       	writeVector[i] = 0;
       }
+      nameLength = 0;
+      for(int i=0; i<MAX_FILE_NAME_SIZE; i++){
+      	fileName[i] = 0;
+      }
     }
 
     uint32_t get_fd(){
@@ -56,6 +60,7 @@ class client{
     void set_fd(uint32_t number, uint8_t name[MAX_FILE_NAME_SIZE]){
       fd = number;
       strncpy((char*)fileName, (char*)name, strlen((char*)name));
+      nameLength = strlen((char*)name);
     }
 
     void setSeqNO(uint32_t number){
@@ -72,7 +77,10 @@ class client{
 
     void writeData(uint32_t sequenceNO, data write){
       writeInfo[sequenceNO] = write;
-      writeVector[sequenceNO/32] &= 1<<(sequenceNO%32); 
+      writeVector[sequenceNO/32] |= 1<<(sequenceNO%32); 
+      seqno = max(sequenceNO, seqno);
+      cout<<sequenceNO<<endl;
+      cout<<max(sequenceNO, seqno)<<endl;
     }
 
     std::vector<data> getWriteInfo(){
@@ -313,7 +321,7 @@ void handleCommit(packetInfo packet){
 	if(iter->second.get_fd() != packet.fd)	return;
 	if(iter->second.getTranscation() != packet.transactionID)	return;
 	std::string filePath;
-	filePath.assign(iter->second.fileName, iter->second.nameLength);
+	filePath.assign((char*)iter->second.fileName, (size_t)iter->second.nameLength);
 	filePath = path + filePath;
  	int fd = open(filePath.c_str(),O_WRONLY | O_CREAT, 0777);
  	std::vector<data> writeInfo = iter->second.getWriteInfo();

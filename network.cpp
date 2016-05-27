@@ -11,11 +11,11 @@
 #include <sstream>
 #include "network.h"
 
-static int theSocket;
+static unsigned short theSocket;
 /* Use this socket address to send packets to the multi-cast group. */
 static Sockaddr groupAddr;
 static int ThePacketLoss = 0;
-static int Port;
+static unsigned short Port;
 
 void sendPacket(unsigned char packType, packetInfo packet){
 	if(random()%100 < ThePacketLoss)	return;
@@ -109,8 +109,9 @@ void netInit(){
   	nullAddr.sin_family = AF_INET;
   	nullAddr.sin_addr.s_addr = htonl(INADDR_ANY);
   	nullAddr.sin_port = Port;
+  	printf("Port is %d\n", Port);
   	if (bind(theSocket, (struct sockaddr *)&nullAddr, sizeof(nullAddr)) < 0)
-  	  printf((char *)"netInit binding");
+  	  printf("netInit binding error\n");
 	
   	/* Multicast TTL:
   	   0 restricted to the same host
