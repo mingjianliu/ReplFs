@@ -247,6 +247,8 @@ WriteBlock_Helper( int fd, char * buffer, int byteOffset, int blockSize, bool is
   if(client::instance()->getSequenceNO() >= MAX_WRITE){
     return ErrorReturn;
   }
+  if(client::instance()->get_fd() != fd)
+    return ErrorReturn;
 
   packetInfo packet;
   packet.clientID = client::instance()->get_ID();
@@ -424,6 +426,8 @@ Abort( int fd )
 #ifdef DEBUG
   printf( "Abort: FD=%d\n", fd );
 #endif
+
+  if( fd != client::instance()->get_fd()) return ErrorReturn;
 
   /*************************/
   /* Abort the transaction */

@@ -256,7 +256,7 @@ void handleWriteBlock(packetInfo packet){
 	//Save write information
 	if(iter == clients.end()){
 		return;
-	}else if(packet.transactionID == iter->second.getTranscation()){
+	}else if(packet.transactionID == iter->second.getTranscation() && packet.fd == iter->second.get_fd()){
 		data writeInfo;
 		writeInfo.offset = packet.byteOffset;
 		strncpy(writeInfo.strData, (char*)packet.buffer, MaxBlockLength);
@@ -274,18 +274,13 @@ void handleCheck(packetInfo packet){
 	bool ready = true;
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	if(iter == clients.end()){
-    printf("point 1 quite\n");
     return;
   }	
 	if(iter->second.get_fd() != packet.fd){
-    printf("point 2 quite\n");
     return;
   }
-	if(iter->second.getTranscation() != packet.transactionID){
-    printf("point 3 quite\n");
-    printf("iter->second.getTranscation() is %d, packet.transactionID is %d\n", iter->second.getTranscation(), packet.transactionID);
+	if(iter->second.getTranscation() != packet.transactionID)
   	return;
-  }
 
   printf("test point 0\n");
 	uint32_t* writeVector = iter->second.readData();

@@ -163,7 +163,7 @@ for test in $tests ; do
   done
   sleep 9
 
-  echo "***** CHECKING whether servers have started *****"
+  #echo "***** CHECKING whether servers have started *****"
   # for server in $servers ; do
   #   echo -n "$server: "
   #   ssh $server ps ax | grep $serverexec

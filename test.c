@@ -15,7 +15,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 
-#include "client.h"
+#include "client.cpp"
 
 // The port number to pass to InitReplFs().
 // It is set by the -port command-line argument.

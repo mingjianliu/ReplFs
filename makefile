@@ -35,12 +35,11 @@ client.o:	client.cpp client.h
 %.o: %.cpp %.h $(includes)
 	$(CCF) -c $(INCDIR) $< -o $@
 
-test: test.o $(RUNDIR)/libclientReplFs.a
-	$(CCF) -o test test.o -L$(RUNDIR) -lclientReplFs
-
 test.o: test.c
-	$(CCF) -I$(RUNDIR) -c test.c
+	$(CCF) -I$(C_DIR) -c test.c
 
+test: test.o $(C_DIR)/libclientReplFs.a
+	$(CCF) -o test test.o -L$(C_DIR) -lclientReplFs
 
 clean:
 	rm -f appl *.o *.a
