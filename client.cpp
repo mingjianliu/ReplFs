@@ -153,6 +153,7 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
     if(event.eventType==EVENT_INCOMING && incoming.type == INITACK){
       packetInfo info = receviePacket(incoming);
       if(info.clientID == client::instance()->get_ID()){
+        printf("get response from server %d\n", info.serverID);
         client::instance()->servers.insert(info.serverID);
       }
     }
@@ -183,6 +184,7 @@ int OpenFile( char * fileName ) {
   uint32_t fd = 0;
   while(fd==0)  fd = random();
   client::instance()->set_fd(fd);
+  printf("test point 1\n");
 
   packetInfo packet;
   packet.clientID = client::instance()->get_ID();
@@ -210,11 +212,13 @@ int OpenFile( char * fileName ) {
       packetInfo info = receviePacket(incoming);
       if(info.clientID == client::instance()->get_ID() && info.fd == fd && server.find(info.serverID)!=server.end() ){
         server.erase(info.serverID);
+        printf("get response from server %d\n", info.serverID);
         if(info.success == 0) fail = true;
       }
     }
   }  
 
+  printf("Resend is %d\n", resend);
   cleanServer(server); 
 
   if(fail)  return -1;
@@ -324,6 +328,7 @@ Commit_helper( int fd, bool close) {
   packet.clientID = client::instance()->get_ID();
   packet.fd = client::instance()->get_fd();
   packet.transactionID = client::instance()->getTranscation();
+  printf("packet.transactionID is %d", packet.transactionID);
   packet.writeNumber = client::instance()->getSequenceNO();
   sendPacket(CHECK, packet);
 
@@ -348,12 +353,14 @@ Commit_helper( int fd, bool close) {
         if(info.vote == 0)
           abort = true;
         server.erase(info.serverID);
+        printf("PHASE1 get response from server %d\n", info.serverID);
       }
 
       if(incoming.type == RESENDREQ && server.find(info.serverID)!=server.end() && info.clientID == packet.clientID && info.fd == packet.fd){
         //resend all writes needed
         resendPacket(writeinfo, info.writeVector, packet.writeNumber);
         resend = 0;
+        printf("PHASE1 get response from server %d\n", info.serverID);
       }
     }
   }
@@ -361,12 +368,14 @@ Commit_helper( int fd, bool close) {
   //If any server left, regard them as dead, delete in client::instance.
   cleanServer(server); 
 
-  if(client::instance()->servers.size()==0)
+  if(client::instance()->servers.size()==0){
     //should close itself
+    printf("no server\n");
     return NormalReturn;
-
+  }
   //If abort == True, call abort and exit with ErrorReturn
   if(abort == true){
+    printf("abort\n");
     return (ErrorReturn);
   }
   //If abort == False, go to commit phase
@@ -374,10 +383,14 @@ Commit_helper( int fd, bool close) {
 	/****************/
 	/* Commit Phase */
 	/****************/
+  printf("packet.fd is %d", packet.fd);
+  printf("test point here!!!\n");
   resend = 0;
   packet.close = (close)? 1:0;
   server = client::instance()->servers;
   sendPacket(COMMIT, packet);
+  client::instance()->finish_transcation();
+  printf("sending commit packet\n");
   while(resend < MAX_RESEND && server.size() != 0){
     NextEvent(&event);
     //if recevied timeout interval, resend one
@@ -387,9 +400,11 @@ Commit_helper( int fd, bool close) {
     }
     if(event.eventType==EVENT_INCOMING && incoming.type == COMMITACK ){
       packetInfo info = receviePacket(incoming);
+      printf("recevied packet\n");
       //If response with commitACK, client and transcation matches
       if(info.clientID == packet.clientID && info.transactionID == packet.transactionID && info.fd == packet.fd && server.find(info.serverID)!=server.end()){
         server.erase(info.serverID);
+        printf("PHASE2 get response from server %d\n", info.serverID);
       }
     }
   }
@@ -418,6 +433,7 @@ Abort( int fd )
   packet.fd = client::instance()->get_fd();
   packet.transactionID = client::instance()->getTranscation();
   sendPacket(ABORT, packet);
+  printf("send abort packet\n");
 
   ReplFsEvent event;
   ReplFsPacket incoming;
@@ -437,6 +453,7 @@ Abort( int fd )
       if(incoming.type == ABORTACK && server.find(info.serverID)!=server.end() && info.clientID==packet.clientID
          && info.fd==packet.fd && info.transactionID==packet.transactionID){
         server.erase(info.serverID);
+      printf("get response from server %d\n", info.serverID);
       }
 
     }
@@ -462,12 +479,12 @@ CloseFile( int fd ) {
 	/* Check for Commit or Abort */
 	/*****************************/
 
-  client::instance()->close();
-
   if ( Commit_helper( fd, true ) < 0 ) {
-    perror("Close");
+    printf("Close Error!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     return(ErrorReturn);
   }
+
+  client::instance()->close();
 
   return(NormalReturn);
 }

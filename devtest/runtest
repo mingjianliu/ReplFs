@@ -69,7 +69,7 @@ rundir=$(pwd)
 popd
 
 # the set of test cases to run
-tests="1 2 3 4 5 6 8 10 11 12"
+tests="1 2 4 5 6 8 11 12"
 
 # The set of servers to use
 working_servers="
@@ -161,13 +161,13 @@ for test in $tests ; do
     server_args="-port $port -mount $mountdir/$server -drop $packetloss"
     sshx $server "cd $rundir; ./$serverexec $server_args"&
   done
-  sleep 2
+  sleep 9
 
   echo "***** CHECKING whether servers have started *****"
-  for server in $servers ; do
-    echo -n "$server: "
-    ssh $server ps ax | grep $serverexec
-  done
+  # for server in $servers ; do
+  #   echo -n "$server: "
+  #   ssh $server ps ax | grep $serverexec
+  # done
 
   echo "***** STARTING TEST #$test ($info) *****"
   test_args=$(echo -port $port -servers $servercount -test $test -packetloss $packetloss $servers)

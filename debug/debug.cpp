@@ -44,7 +44,7 @@ static uint32_t serverId;
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
 #define MaxBlockLength 512
-#define DEFAULT_PORT 44032
+#define DEFAULT_PORT 5018
 #define MAX_FILE_NAME_SIZE 128
 
 struct data{

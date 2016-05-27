@@ -1,5 +1,5 @@
-
-CFLAGS	= -g -Wall -DSUN
+CFLAGS = -g -DSUN -lssl -fpermissive
+#CFLAGS	= -g -Wall -DSUN
 # CFLAGS	= -g -Wall -DDEC
 CC	= g++
 CCF	= $(CC) $(CFLAGS)
@@ -14,7 +14,7 @@ LIBS    = -lclientReplFs
 CLIENT_OBJECTS = client.o
 SERVER_OBJECTS = server.o
 
-all:	appl server
+all:	appl server test
 
 appl:	appl.o $(C_DIR)/libclientReplFs.a
 	$(CCF) -o appl appl.o $(LIBDIRS) $(LIBS)
@@ -34,6 +34,13 @@ client.o:	client.cpp client.h
 
 %.o: %.cpp %.h $(includes)
 	$(CCF) -c $(INCDIR) $< -o $@
+
+test: test.o $(RUNDIR)/libclientReplFs.a
+	$(CCF) -o test test.o -L$(RUNDIR) -lclientReplFs
+
+test.o: test.c
+	$(CCF) -I$(RUNDIR) -c test.c
+
 
 clean:
 	rm -f appl *.o *.a

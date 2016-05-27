@@ -20,7 +20,7 @@ static uint32_t serverId;
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
 #define MaxBlockLength 512
-#define DEFAULT_PORT 44032
+#define DEFAULT_PORT 5018
 #define MAX_FILE_NAME_SIZE 128
 
 struct data{
@@ -195,6 +195,7 @@ int main(const int argc, char* argv[]){
 
 //All helpers of different packets
 void handleInit(packetInfo packet){
+
 	if(clients.find(packet.clientID) == clients.end()){
 		//Add client
 		clients.insert(std::pair<uint32_t,client>(packet.clientID, *new client()));
@@ -203,18 +204,20 @@ void handleInit(packetInfo packet){
 		outPacket.clientID = packet.clientID;
 		outPacket.serverID = serverId;
 		for(int i=0; i<10; i++){
-			sendPacket(INITACK, packet);
+			sendPacket(INITACK, outPacket);
 		}
 	}
 }
 
 void handleOpen(packetInfo packet){
+
 	packetInfo outPacket;
 	outPacket.clientID = packet.clientID;
 	outPacket.serverID = serverId;
 	outPacket.fd = packet.fd;
 	outPacket.success = 1;
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
+
 	//Check whether the client exists & one file is already opened for that client
 	if(iter == clients.end()){
 		outPacket.success = 0;
@@ -238,14 +241,17 @@ void handleOpen(packetInfo packet){
 		iter->second.set_fd(packet.fd, packet.fileName);
 		iter->second.nameLength = packet.nameLength;
 	}
+  printf("success is %d\n", outPacket.success);
 
 	for(int i=0; i<10; i++){
-		sendPacket(OPENACK, packet);
+		sendPacket(OPENACK, outPacket);
 	}
-	
 }
 
 void handleWriteBlock(packetInfo packet){
+
+  //printf( "Handle writeblock\n");
+
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	//Save write information
 	if(iter == clients.end()){
@@ -261,20 +267,36 @@ void handleWriteBlock(packetInfo packet){
 }
 
 void handleCheck(packetInfo packet){
+
+  printf( "Handle check\n");
+
 	//Check if all writes are there
 	bool ready = true;
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
-	if(iter == clients.end())	return;
-	if(iter->second.get_fd() != packet.fd)	return;
-	if(iter->second.getTranscation() != packet.transactionID)	return;
+	if(iter == clients.end()){
+    printf("point 1 quite\n");
+    return;
+  }	
+	if(iter->second.get_fd() != packet.fd){
+    printf("point 2 quite\n");
+    return;
+  }
+	if(iter->second.getTranscation() != packet.transactionID){
+    printf("point 3 quite\n");
+    printf("iter->second.getTranscation() is %d, packet.transactionID is %d\n", iter->second.getTranscation(), packet.transactionID);
+  	return;
+  }
 
+  printf("test point 0\n");
 	uint32_t* writeVector = iter->second.readData();
 	packetInfo outPacket;
 	outPacket.clientID = packet.clientID;
 	outPacket.serverID = serverId;
 	outPacket.fd = packet.fd;
+  printf("test point1\n");
 	//If some writes absent, send ResendRequest, and wait for writeblock
 	if(!checkAllReceived(writeVector, packet.writeNumber)){
+    printf("not received all packets!\n");
 		//Send resendrequest
 		for(int i=0; i<4; i++){
 			outPacket.writeVector[i] = *(writeVector+i);	
@@ -315,6 +337,9 @@ bool checkAllReceived(uint32_t* writeVector, uint32_t writeNumber){
 }
 
 void handleCommit(packetInfo packet){
+
+  printf( "Handle commit\n");
+
 	//get file name
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	if(iter == clients.end())	return;
@@ -333,18 +358,37 @@ void handleCommit(packetInfo packet){
 	//If close == true, close this file locally and do some clean up stuff
  	iter->second.finish_transcation();
  	if(packet.close == 1){
+    printf("close is %d", packet.close);
  		iter->second.close();
  	}
 
+  packetInfo outPacket;
+  outPacket.clientID = packet.clientID;
+  outPacket.serverID = serverId;
+  outPacket.fd = packet.fd;
+  outPacket.transactionID = packet.transactionID;
+  sendPacket(COMMITACK, outPacket);
+  printf("finish this commit\n");
 }
 
 void handleAbort(packetInfo packet){
+
+  printf( "Handle abort\n");
+
 	//Advance transcationID and abort all writes
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	if(iter == clients.end())	return;
 	if(iter->second.get_fd() != packet.fd)	return;
 	if(iter->second.getTranscation() != packet.transactionID)	return;
 	iter->second.finish_transcation();
+
+  packetInfo outPacket;
+  outPacket.clientID = packet.clientID;
+  outPacket.serverID = serverId;
+  outPacket.fd = packet.fd;
+  outPacket.fd = packet.transactionID;
+  sendPacket(ABORTACK, outPacket);
+  printf("send ABORTACK\n");
 }
 
 

@@ -1,6 +1,4 @@
-ifndef RUNDIR
-    $(error You must specify RUNDIR)
-endif
+RUNDIR = ../
 
 CFLAGS = -g -DSUN -lssl -fpermissive
 CC = g++
