@@ -310,16 +310,15 @@ void handleCheck(packetInfo packet){
   			    }
   			}
 		}
-    if(resend == MAX_WAIT_TIME){
-      //Do something to verify if any one received commit, if not, just do iter->second.finish_transcation();
-      //Send to request for statue, if no one response, iter->second.finish_transcation();
-    }
 	}
 
 	//All writeblocks are arrived. Send Vote
 	iter->second.setSeqNO(packet.writeNumber);
 	outPacket.vote = true;
 	sendPacket(VOTE, outPacket);
+
+  //Wait for commit or abort, if time expires, just query other servers if they received it.
+  //If any server received this transcation. And then just clear this client
 }
 
 bool checkAllReceived(uint32_t* writeVector, uint32_t writeNumber){

@@ -1,0 +1,6 @@
+All resend are changed from 300 milliseconds/time, 10 times to 200 milliseconds/time, 30 times.
+Since 10 times resend result in some packet loss, which turn to inconsistency.
+
+In server, the check phase and commit/abort phase are integrated together. After response to a check packet, the server wait up to 9 seconds for commit/abort packet. If no packet received, then the server just regard this client as dead, and send a broadcast to all other servers to requery the transcation's status. If any server got commit/abort and reply the status, the server will do the same.
+
+The client don't send a dummy writeblock to tell server it's alive(this packet functions like a heartbeat packet). Since the application just do operations continuously, it's not a necessity.

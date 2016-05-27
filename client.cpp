@@ -11,6 +11,7 @@
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
 #define MAX_WRITE 128
+#define MaxFileSize 1000000
 
 #include <stdio.h>
 #include <fcntl.h>
