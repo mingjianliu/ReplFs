@@ -22,6 +22,7 @@ static uint32_t serverId;
 #define MaxBlockLength 512
 #define DEFAULT_PORT 5018
 #define MAX_FILE_NAME_SIZE 128
+#define MAX_WAIT_TIME 30
 
 struct data{
   int offset;
@@ -291,15 +292,15 @@ void handleCheck(packetInfo packet){
 			outPacket.writeVector[i] = *(writeVector+i);	
 		}
 		ReplFsEvent event;
-    	ReplFsPacket incoming;
-    	event.eventDetail = &incoming;
-		//Wait for all packets received 
-		//writeNumber is 10 if there are 9 writes
-		while(!checkAllReceived(writeVector, packet.writeNumber)){
+    ReplFsPacket incoming;
+    event.eventDetail = &incoming;
+    int resend = 0;
+		while(resend < MAX_WAIT_TIME && !checkAllReceived(writeVector, packet.writeNumber)){
   			NextEvent(&event);
   			  //if recevied timeout interval, resend one
   			if(event.eventType==EVENT_TIMEOUT){
   			  	sendPacket(RESENDREQ, outPacket);
+            resend++;
   			}
   			//if received initACK, save the serverID
   			if(event.eventType==EVENT_INCOMING && incoming.type == WRITEBLOCK){
@@ -309,6 +310,10 @@ void handleCheck(packetInfo packet){
   			    }
   			}
 		}
+    if(resend == MAX_WAIT_TIME){
+      //Do something to verify if any one received commit, if not, just do iter->second.finish_transcation();
+      //Send to request for statue, if no one response, iter->second.finish_transcation();
+    }
 	}
 
 	//All writeblocks are arrived. Send Vote
