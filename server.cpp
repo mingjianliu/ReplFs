@@ -93,11 +93,11 @@ class client{
     	return writeInfo;
     }
 
-    uint32_t getTranscation(){
+    uint32_t getTransaction(){
       return transaction;
     }
 
-    void finish_transcation(bool commitOrAbort){
+    void finish_Transaction(bool commitOrAbort){
       transaction++;
       seqno = 0;
       writeInfo.clear();
@@ -268,7 +268,7 @@ void handleWriteBlock(packetInfo packet){
 	//Save write information
 	if(iter == clients.end()){
 		return;
-	}else if(packet.transactionID == iter->second.getTranscation() && packet.fd == iter->second.get_fd()){
+	}else if(packet.transactionID == iter->second.getTransaction() && packet.fd == iter->second.get_fd()){
 		data writeInfo;
 		writeInfo.offset = packet.byteOffset;
 		strncpy(writeInfo.strData, (char*)packet.buffer, MaxBlockLength);
@@ -289,7 +289,7 @@ void handleCheck(packetInfo packet){
 	if(iter->second.get_fd() != packet.fd){
     return;
   }
-	if(iter->second.getTranscation() != packet.transactionID)
+	if(iter->second.getTransaction() != packet.transactionID)
   	return;
 
 	uint32_t* writeVector = iter->second.readData();
@@ -297,15 +297,18 @@ void handleCheck(packetInfo packet){
 	outPacket.clientID = packet.clientID;
 	outPacket.serverID = serverId;
 	outPacket.fd = packet.fd;
-	//If some writes absent, send ResendRequest, and wait for writeblock
+
+  packetInfo info;
+  ReplFsEvent event;
+  ReplFsPacket incoming;
+  event.eventDetail = &incoming;
+	
+  //If some writes absent, send ResendRequest, and wait for writeblock
 	if(!checkAllReceived(writeVector, packet.writeNumber)){
 		//Send resendrequest
 		for(int i=0; i<4; i++){
 			outPacket.writeVector[i] = *(writeVector+i);	
 		}
-		ReplFsEvent event;
-    ReplFsPacket incoming;
-    event.eventDetail = &incoming;
     int resend = 0;
 		while(resend < MAX_WAIT_TIME && !checkAllReceived(writeVector, packet.writeNumber)){
   			NextEvent(&event);
@@ -316,8 +319,8 @@ void handleCheck(packetInfo packet){
   			}
   			//if received initACK, save the serverID
   			if(event.eventType==EVENT_INCOMING && incoming.type == WRITEBLOCK){
-  			    packetInfo info = receviePacket(incoming);
-  			    if(packet.clientID == info.clientID && iter->second.getTranscation() == info.transactionID && packet.fd == info.fd){
+  			    info = receviePacket(incoming);
+  			    if(packet.clientID == info.clientID && iter->second.getTransaction() == info.transactionID && packet.fd == info.fd){
   			    	handleWriteBlock(info);
               break;
   			    }
@@ -331,7 +334,7 @@ void handleCheck(packetInfo packet){
 	sendPacket(VOTE, outPacket);
 
   //Wait for commit or abort, if time expires, just query other servers if they received it.
-  //If any server received this transcation. And then just clear this client
+  //If any server received this transaction. And then just clear this client
   int wait = 0;
   while(wait!=MAX_WAIT_TIME){
     NextEvent(&event);
@@ -341,15 +344,17 @@ void handleCheck(packetInfo packet){
     }
     if(event.eventType==EVENT_INCOMING && (incoming.type==COMMIT || incoming.type==ABORT)){
       info = receviePacket(incoming);
-      if(info.clientID == packet.clientID && info.fd == packet.fd && info.trasaction == packet.trasaction){
-        handleCommit(info);
+      if(info.clientID == packet.clientID && info.fd == packet.fd && info.transactionID == packet.transactionID){
+        if(incoming.type==COMMIT) handleCommit(info);
+        if(incoming.type==ABORT) handleAbort(info);
         break;
       }
     }
   }
 
+
+  //If no commit/abort received, query other servers
   if(wait==MAX_WAIT_TIME){
-    //check with others, send TRANSACTREQ
     sendPacket(TRANSACTREQ, outPacket);
     wait = 0;
     while(wait!=MAX_WAIT_TIME){
@@ -360,17 +365,23 @@ void handleCheck(packetInfo packet){
       }
       if(event.eventType==EVENT_INCOMING && (incoming.type==TRANSACTRES)){
         packetInfo reply_info = receviePacket(incoming);
-        if(reply_info.serverID == serverId && reply_info.fd == packet.fd && reply_info.trasaction == packet.trasaction){
-          if(info.transactionStatue == 1){
+        if(reply_info.serverID == serverId && packet.clientID==reply_info.clientID && reply_info.fd == packet.fd && reply_info.transactionID == packet.transactionID){
+          if(reply_info.transactionStatue == 1){
             handleCommit(packet);
           }
-          
+          if(reply_info.transactionStatue == 0){
+            handleAbort(packet);
+            iter->second.close();
+          }
+          break;
         }
       }
     }
     //If no commit responded, abort, and clean this client
-    handleAbort(packet);
-    iter->close();
+    if(wait==MAX_WAIT_TIME){
+      handleAbort(packet);
+      iter->second.close();
+    }
   }
 
 }
@@ -389,7 +400,7 @@ void handleCommit(packetInfo packet){
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	if(iter == clients.end())	return;
 	if(iter->second.get_fd() != packet.fd)	return;
-	if(iter->second.getTranscation() != packet.transactionID)	return;
+	if(iter->second.getTransaction() != packet.transactionID)	return;
 	std::string filePath;
 	filePath.assign((char*)iter->second.fileName, (size_t)iter->second.nameLength);
 	filePath = path + filePath;
@@ -401,7 +412,7 @@ void handleCommit(packetInfo packet){
  	}
  	close(fd);
 	//If close == true, close this file locally and do some clean up stuff
- 	iter->second.finish_transcation(true);
+ 	iter->second.finish_Transaction(true);
  	if(packet.close == 1){
  		iter->second.close();
  	}
@@ -416,12 +427,12 @@ void handleCommit(packetInfo packet){
 
 void handleAbort(packetInfo packet){
 
-	//Advance transcationID and abort all writes
+	//Advance transactionID and abort all writes
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	if(iter == clients.end())	return;
 	if(iter->second.get_fd() != packet.fd)	return;
-	if(iter->second.getTranscation() != packet.transactionID)	return;
-	iter->second.finish_transcation(false);
+	if(iter->second.getTransaction() != packet.transactionID)	return;
+	iter->second.finish_Transaction(false);
 
   packetInfo outPacket;
   outPacket.clientID = packet.clientID;
@@ -435,7 +446,7 @@ void handleStatue(packetInfo packet){
   std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
   if(iter==clients.end()) return;
   if(iter->second.get_fd() != packet.fd)  return;
-  if(iter->second.getTranscation() != packet.transactionID+1) return;
+  if(iter->second.getTransaction() != packet.transactionID+1) return;
   packetInfo outPacket;
   outPacket.clientID = packet.clientID;
   outPacket.serverID = packet.serverID;
