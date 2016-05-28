@@ -36,6 +36,7 @@ class client{
     std::vector<data> writeInfo;
     uint32_t writeVector[4];
     uint32_t seqno;
+    int last_commit;
 
   public:
   	uint8_t fileName[MAX_FILE_NAME_SIZE];
@@ -53,6 +54,11 @@ class client{
       for(int i=0; i<MAX_FILE_NAME_SIZE; i++){
       	fileName[i] = 0;
       }
+      last_commit = 0;
+    }
+
+    int get_lastCommit(){
+      return last_commit;
     }
 
     uint32_t get_fd(){
@@ -91,7 +97,7 @@ class client{
       return transaction;
     }
 
-    void finish_transcation(){
+    void finish_transcation(bool commitOrAbort){
       transaction++;
       seqno = 0;
       writeInfo.clear();
@@ -99,6 +105,7 @@ class client{
       for(int i=0; i<4; i++){
       	writeVector[i] = 0;
       }
+      last_commit = (commitOrAbort)?1:0;
     }
 
     void close(){
@@ -114,6 +121,7 @@ class client{
       	fileName[i] = 0;
       }
       nameLength = 0;
+      last_commit = 0;
     }
 };
 
@@ -126,6 +134,7 @@ void handleCheck(packetInfo packet);
 bool checkAllReceived(uint32_t* writeVector, uint32_t writeNumber);
 void handleCommit(packetInfo packet);
 void handleAbort(packetInfo packet);
+void handleStatue(packetInfo packet);
 
 int main(const int argc, char* argv[]){
   //Generate serverID
@@ -187,6 +196,9 @@ int main(const int argc, char* argv[]){
           break;
         case ABORT:
           handleAbort(packet);
+          break;
+        case TRANSACTREQ:
+          handleStatue(packet);
           break;
   	  }  
     }
@@ -307,6 +319,7 @@ void handleCheck(packetInfo packet){
   			    packetInfo info = receviePacket(incoming);
   			    if(packet.clientID == info.clientID && iter->second.getTranscation() == info.transactionID && packet.fd == info.fd){
   			    	handleWriteBlock(info);
+              break;
   			    }
   			}
 		}
@@ -319,6 +332,47 @@ void handleCheck(packetInfo packet){
 
   //Wait for commit or abort, if time expires, just query other servers if they received it.
   //If any server received this transcation. And then just clear this client
+  int wait = 0;
+  while(wait!=MAX_WAIT_TIME){
+    NextEvent(&event);
+    if(event.eventType==EVENT_TIMEOUT){
+      sendPacket(VOTE, outPacket);
+      wait++;
+    }
+    if(event.eventType==EVENT_INCOMING && (incoming.type==COMMIT || incoming.type==ABORT)){
+      info = receviePacket(incoming);
+      if(info.clientID == packet.clientID && info.fd == packet.fd && info.trasaction == packet.trasaction){
+        handleCommit(info);
+        break;
+      }
+    }
+  }
+
+  if(wait==MAX_WAIT_TIME){
+    //check with others, send TRANSACTREQ
+    sendPacket(TRANSACTREQ, outPacket);
+    wait = 0;
+    while(wait!=MAX_WAIT_TIME){
+      NextEvent(&event);
+      if(event.eventType==EVENT_TIMEOUT){
+        sendPacket(TRANSACTREQ, outPacket);
+        wait++;
+      }
+      if(event.eventType==EVENT_INCOMING && (incoming.type==TRANSACTRES)){
+        packetInfo reply_info = receviePacket(incoming);
+        if(reply_info.serverID == serverId && reply_info.fd == packet.fd && reply_info.trasaction == packet.trasaction){
+          if(info.transactionStatue == 1){
+            handleCommit(packet);
+          }
+          
+        }
+      }
+    }
+    //If no commit responded, abort, and clean this client
+    handleAbort(packet);
+    iter->close();
+  }
+
 }
 
 bool checkAllReceived(uint32_t* writeVector, uint32_t writeNumber){
@@ -347,7 +401,7 @@ void handleCommit(packetInfo packet){
  	}
  	close(fd);
 	//If close == true, close this file locally and do some clean up stuff
- 	iter->second.finish_transcation();
+ 	iter->second.finish_transcation(true);
  	if(packet.close == 1){
  		iter->second.close();
  	}
@@ -367,15 +421,26 @@ void handleAbort(packetInfo packet){
 	if(iter == clients.end())	return;
 	if(iter->second.get_fd() != packet.fd)	return;
 	if(iter->second.getTranscation() != packet.transactionID)	return;
-	iter->second.finish_transcation();
+	iter->second.finish_transcation(false);
 
   packetInfo outPacket;
   outPacket.clientID = packet.clientID;
   outPacket.serverID = serverId;
   outPacket.fd = packet.fd;
-  outPacket.fd = packet.transactionID;
+  outPacket.transactionID = packet.transactionID;
   sendPacket(ABORTACK, outPacket);
 }
 
-
-
+void handleStatue(packetInfo packet){
+  std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
+  if(iter==clients.end()) return;
+  if(iter->second.get_fd() != packet.fd)  return;
+  if(iter->second.getTranscation() != packet.transactionID+1) return;
+  packetInfo outPacket;
+  outPacket.clientID = packet.clientID;
+  outPacket.serverID = packet.serverID;
+  outPacket.fd = packet.fd;
+  outPacket.transactionID = packet.transactionID;
+  outPacket.transactionStatue = iter->second.get_lastCommit();
+  sendPacket(TRANSACTRES, outPacket);
+}

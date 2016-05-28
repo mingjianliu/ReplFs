@@ -233,13 +233,16 @@ WriteBlock_Helper( int fd, char * buffer, int byteOffset, int blockSize, bool is
   ASSERT( byteOffset >= 0 );
   ASSERT( buffer );
   ASSERT( blockSize >= 0 && blockSize < MaxBlockLength );
-  ASSERT(byteOffset + blockSize < MaxFileSize);
   ASSERT( client::instance()->servers.size() != 0);
 
 #ifdef DEBUG
   printf( "WriteBlock: Writing FD=%d, Offset=%d, Length=%d\n",
 	fd, byteOffset, blockSize );
 #endif
+
+  if(byteOffset + blockSize < MaxFileSize){
+    return ErrorReturn;
+  }
 
   if(client::instance()->getSequenceNO() >= MAX_WRITE){
     return ErrorReturn;
@@ -369,6 +372,7 @@ Commit_helper( int fd, bool close) {
   }
   //If abort == True, call abort and exit with ErrorReturn
   if(abort == true){
+    Abort(fd);
     return (ErrorReturn);
   }
   //If abort == False, go to commit phase
