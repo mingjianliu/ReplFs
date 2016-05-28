@@ -69,11 +69,11 @@ rundir=$(pwd)
 popd
 
 # the set of test cases to run
-tests="1 2 4 5 6 8 11 12"
+tests = "1"
+#tests="1 2 4 5 6 8 11 12"
 
 # The set of servers to use
 working_servers="
-    myth7
     myth10
     myth25
     myth20

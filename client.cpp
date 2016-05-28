@@ -11,7 +11,6 @@
 #define EVENT_TIMEOUT 0
 #define EVENT_INCOMING 1
 #define MAX_WRITE 128
-#define MaxFileSize 1000000
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -240,15 +239,19 @@ WriteBlock_Helper( int fd, char * buffer, int byteOffset, int blockSize, bool is
 	fd, byteOffset, blockSize );
 #endif
 
-  if(byteOffset + blockSize < MaxFileSize){
+  if((long)byteOffset + blockSize > (long) 1000000){
+    printf("quit 1\n");
     return ErrorReturn;
   }
 
   if(client::instance()->getSequenceNO() >= MAX_WRITE){
+    printf("quit 2\n");
     return ErrorReturn;
   }
-  if(client::instance()->get_fd() != fd)
+  if(client::instance()->get_fd() != fd){
+    printf("quit 3\n");
     return ErrorReturn;
+  }
 
   packetInfo packet;
   packet.clientID = client::instance()->get_ID();
@@ -262,6 +265,7 @@ WriteBlock_Helper( int fd, char * buffer, int byteOffset, int blockSize, bool is
     packet.buffer[i] = 0;
   }
   strncpy((char*)packet.buffer, buffer, strlen(buffer));
+
   
   int resend = 0;
   data write;
@@ -272,13 +276,14 @@ WriteBlock_Helper( int fd, char * buffer, int byteOffset, int blockSize, bool is
     write.strData[i] = 0;
   }
   strncpy(write.strData, buffer, strlen(buffer));
-  client::instance()->writeData(write);
+  if(!isResend) client::instance()->writeData(write);
   
   while(resend < MAX_RESEND) {
     ++resend;
     sendPacket(WRITEBLOCK, packet);
   }  
 
+  printf("Regular return\n");
   return( bytesWritten );
 }
 
@@ -314,6 +319,7 @@ Commit_helper( int fd, bool close) {
   if( fd != client::instance()->get_fd()) return ErrorReturn;
 #ifdef DEBUG
   printf( "Commit: FD=%d\n", fd );
+  if(close) printf("And close the file\n");
 #endif
 
 	/****************************************************/
@@ -377,6 +383,8 @@ Commit_helper( int fd, bool close) {
   }
   //If abort == False, go to commit phase
 
+
+  printf("Come to commit phase!\n");
 	/****************/
 	/* Commit Phase */
 	/****************/
@@ -397,6 +405,7 @@ Commit_helper( int fd, bool close) {
       //If response with commitACK, client and transcation matches
       if(info.clientID == packet.clientID && info.transactionID == packet.transactionID && info.fd == packet.fd && server.find(info.serverID)!=server.end()){
         server.erase(info.serverID);
+        printf("Got commit ACK\n");
       }
     }
   }

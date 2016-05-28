@@ -14,12 +14,12 @@ LIBS    = -lclientReplFs
 CLIENT_OBJECTS = client.o
 SERVER_OBJECTS = server.o
 
-all:	appl server test
+all:	appl replFsServer test
 
 appl:	appl.o $(C_DIR)/libclientReplFs.a
 	$(CCF) -o appl appl.o $(LIBDIRS) $(LIBS)
 
-server: $(SERVER_OBJECTS)
+replFsServer: $(SERVER_OBJECTS)
 	$(CCF) $(SERVER_OBJECTS) -o $@
 
 appl.o:	appl.c client.h appl.h

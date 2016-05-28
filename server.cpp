@@ -11,6 +11,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <algorithm>
+#include <iostream>
 #include "network.cpp"
 
 //Define data structure of clients
@@ -23,6 +24,8 @@ static uint32_t serverId;
 #define DEFAULT_PORT 5018
 #define MAX_FILE_NAME_SIZE 128
 #define MAX_WAIT_TIME 30
+
+using namespace std;
 
 struct data{
   int offset;
@@ -146,7 +149,7 @@ int main(const int argc, char* argv[]){
   int dropPercent;
   if(argc == 1){
     portNum = DEFAULT_PORT;
-    dropPercent = 10;
+    dropPercent = 0;
     path = "./";
   }else if(argc >= 7){
     portNum = atoi(argv[2]);
@@ -333,6 +336,8 @@ void handleCheck(packetInfo packet){
 	outPacket.vote = true;
 	sendPacket(VOTE, outPacket);
 
+
+  printf("Wait for commit/abort\n");
   //Wait for commit or abort, if time expires, just query other servers if they received it.
   //If any server received this transaction. And then just clear this client
   int wait = 0;
@@ -345,8 +350,14 @@ void handleCheck(packetInfo packet){
     if(event.eventType==EVENT_INCOMING && (incoming.type==COMMIT || incoming.type==ABORT)){
       info = receviePacket(incoming);
       if(info.clientID == packet.clientID && info.fd == packet.fd && info.transactionID == packet.transactionID){
-        if(incoming.type==COMMIT) handleCommit(info);
-        if(incoming.type==ABORT) handleAbort(info);
+        if(incoming.type==COMMIT) {
+          handleCommit(info);
+          printf("Commit now\n");
+        }  
+        if(incoming.type==ABORT){
+          printf("Commit now\n");
+          handleAbort(info);
+        } 
         break;
       }
     }
@@ -354,35 +365,37 @@ void handleCheck(packetInfo packet){
 
 
   //If no commit/abort received, query other servers
-  if(wait==MAX_WAIT_TIME){
-    sendPacket(TRANSACTREQ, outPacket);
-    wait = 0;
-    while(wait!=MAX_WAIT_TIME){
-      NextEvent(&event);
-      if(event.eventType==EVENT_TIMEOUT){
-        sendPacket(TRANSACTREQ, outPacket);
-        wait++;
-      }
-      if(event.eventType==EVENT_INCOMING && (incoming.type==TRANSACTRES)){
-        packetInfo reply_info = receviePacket(incoming);
-        if(reply_info.serverID == serverId && packet.clientID==reply_info.clientID && reply_info.fd == packet.fd && reply_info.transactionID == packet.transactionID){
-          if(reply_info.transactionStatue == 1){
-            handleCommit(packet);
-          }
-          if(reply_info.transactionStatue == 0){
-            handleAbort(packet);
-            iter->second.close();
-          }
-          break;
-        }
-      }
-    }
-    //If no commit responded, abort, and clean this client
-    if(wait==MAX_WAIT_TIME){
-      handleAbort(packet);
-      iter->second.close();
-    }
-  }
+  // if(wait==MAX_WAIT_TIME){
+  //   sendPacket(TRANSACTREQ, outPacket);
+  //   wait = 0;
+  //   while(wait!=MAX_WAIT_TIME){
+  //     NextEvent(&event);
+  //     if(event.eventType==EVENT_TIMEOUT){
+  //       sendPacket(TRANSACTREQ, outPacket);
+  //       wait++;
+  //     }
+  //     if(event.eventType==EVENT_INCOMING && (incoming.type==TRANSACTRES)){
+  //       packetInfo reply_info = receviePacket(incoming);
+  //       if(reply_info.serverID == serverId && packet.clientID==reply_info.clientID && reply_info.fd == packet.fd && reply_info.transactionID == packet.transactionID){
+  //         if(reply_info.transactionStatue == 1){
+  //           handleCommit(packet);
+  //         }
+  //         if(reply_info.transactionStatue == 0){
+  //           handleAbort(packet);
+  //           iter->second.close();
+  //         }
+  //         break;
+  //       }
+  //     }
+  //   }
+  //   //If no commit responded, abort, and clean this client
+  //   if(wait==MAX_WAIT_TIME){
+  //     handleAbort(packet);
+  //     iter->second.close();
+  //   }
+  // }
+
+
 
 }
 
@@ -409,6 +422,7 @@ void handleCommit(packetInfo packet){
  	for(uint32_t i=0; i<iter->second.getSeqNO(); i++){
  		lseek(fd, writeInfo[i].offset, SEEK_SET);
  		write(fd, writeInfo[i].strData, writeInfo[i].blockSize);
+    cout<<"Write data "<<writeInfo[i].strData<<" at block "<<writeInfo[i].offset<<endl;
  	}
  	close(fd);
 	//If close == true, close this file locally and do some clean up stuff
