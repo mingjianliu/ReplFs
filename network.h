@@ -33,7 +33,7 @@
 
 #define USEC_PER_SEC 1000000
 #define USEC_PER_MSEC 1000
-#define HEARTBEAT_MSEC 200
+#define HEARTBEAT_MSEC 125
 #define HEARTBEAT_USEC (HEARTBEAT_MSEC * (USEC_PER_MSEC))
 
 typedef struct sockaddr_in Sockaddr;

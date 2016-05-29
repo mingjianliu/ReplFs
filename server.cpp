@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <algorithm>
 #include <iostream>
+#include <ctime>
 #include "network.cpp"
 
 //Define data structure of clients
@@ -23,9 +24,7 @@ static uint32_t serverId;
 #define MaxBlockLength 512
 #define DEFAULT_PORT 5018
 #define MAX_FILE_NAME_SIZE 128
-#define MAX_WAIT_TIME 30
-
-using namespace std;
+#define MAX_WAIT_TIME 60
 
 struct data{
   int offset;
@@ -33,6 +32,7 @@ struct data{
   int blockSize;
 };
 
+//The shared states for each client are maintained here
 class client{
     uint32_t fd;
     uint32_t transaction;  
@@ -139,9 +139,22 @@ void handleCommit(packetInfo packet);
 void handleAbort(packetInfo packet);
 void handleStatue(packetInfo packet);
 
+int random_number(){
+  int x;
+  unsigned int seed;
+  FILE *urandom;
+
+  urandom = fopen ("/dev/urandom", "r");
+  fread (&seed, sizeof (seed), 1, urandom);
+  srand (seed); /* seed the pseudo-random number generator */
+
+  x=rand(); 
+}
+
+
 int main(const int argc, char* argv[]){
   //Generate serverID
-  serverId = random();
+  serverId = random_number();
   clients.clear();
 
   //Get input arguments
@@ -244,11 +257,11 @@ void handleOpen(packetInfo packet){
 	  }
 	  else{
 	  	for(std::map<uint32_t,client>::iterator it=clients.begin(); it!=clients.end(); it++){
-		  if(it->second.get_fd()!=0 && strcmp((char*)it->second.fileName, (char*)packet.fileName) == 0){
-			outPacket.success = 0;
-			break;
+		    if(it->second.get_fd()!=0 && strcmp((char*)it->second.fileName, (char*)packet.fileName) == 0){
+			   outPacket.success = 0;
+			   break;
+		    }
 		  }
-		}
 	  }
 	}
 	//if no one match, create one and return success = true
@@ -313,7 +326,8 @@ void handleCheck(packetInfo packet){
 			outPacket.writeVector[i] = *(writeVector+i);	
 		}
     int resend = 0;
-		while(resend < MAX_WAIT_TIME && !checkAllReceived(writeVector, packet.writeNumber)){
+		while(!checkAllReceived(writeVector, packet.writeNumber)){
+        printf("check here!\n");
   			NextEvent(&event);
   			  //if recevied timeout interval, resend one
   			if(event.eventType==EVENT_TIMEOUT){
@@ -337,7 +351,12 @@ void handleCheck(packetInfo packet){
 	sendPacket(VOTE, outPacket);
 
 
-  printf("Wait for commit/abort\n");
+  // printf("Wait for commit/abort\n");
+  // for(int i=0; i<30; i++){
+  //   sendPacket(VOTE, outPacket);
+  // }
+
+
   //Wait for commit or abort, if time expires, just query other servers if they received it.
   //If any server received this transaction. And then just clear this client
   int wait = 0;
@@ -355,7 +374,7 @@ void handleCheck(packetInfo packet){
           printf("Commit now\n");
         }  
         if(incoming.type==ABORT){
-          printf("Commit now\n");
+          printf("Abort now\n");
           handleAbort(info);
         } 
         break;
@@ -363,37 +382,38 @@ void handleCheck(packetInfo packet){
     }
   }
 
-
   //If no commit/abort received, query other servers
-  // if(wait==MAX_WAIT_TIME){
-  //   sendPacket(TRANSACTREQ, outPacket);
-  //   wait = 0;
-  //   while(wait!=MAX_WAIT_TIME){
-  //     NextEvent(&event);
-  //     if(event.eventType==EVENT_TIMEOUT){
-  //       sendPacket(TRANSACTREQ, outPacket);
-  //       wait++;
-  //     }
-  //     if(event.eventType==EVENT_INCOMING && (incoming.type==TRANSACTRES)){
-  //       packetInfo reply_info = receviePacket(incoming);
-  //       if(reply_info.serverID == serverId && packet.clientID==reply_info.clientID && reply_info.fd == packet.fd && reply_info.transactionID == packet.transactionID){
-  //         if(reply_info.transactionStatue == 1){
-  //           handleCommit(packet);
-  //         }
-  //         if(reply_info.transactionStatue == 0){
-  //           handleAbort(packet);
-  //           iter->second.close();
-  //         }
-  //         break;
-  //       }
-  //     }
-  //   }
-  //   //If no commit responded, abort, and clean this client
-  //   if(wait==MAX_WAIT_TIME){
-  //     handleAbort(packet);
-  //     iter->second.close();
-  //   }
-  // }
+  printf("Enter 3 phase\n");
+  if(wait==MAX_WAIT_TIME){
+    sendPacket(TRANSACTREQ, outPacket);
+    wait = 0;
+    while(wait!=MAX_WAIT_TIME){
+      NextEvent(&event);
+      if(event.eventType==EVENT_TIMEOUT){
+        sendPacket(TRANSACTREQ, outPacket);
+        wait++;
+      }
+      if(event.eventType==EVENT_INCOMING && (incoming.type==TRANSACTRES)){
+        packetInfo reply_info = receviePacket(incoming);
+        if(reply_info.serverID == serverId && packet.clientID==reply_info.clientID && reply_info.fd == packet.fd && reply_info.transactionID == packet.transactionID){
+          if(reply_info.transactionStatue == 1){
+            handleCommit(packet);
+            iter->second.close();
+          }
+          if(reply_info.transactionStatue == 0){
+            handleAbort(packet);
+            iter->second.close();
+          }
+          break;
+        }
+      }
+    }
+    //If no commit responded, abort, and clean this client
+    if(wait==MAX_WAIT_TIME){
+      handleAbort(packet);
+      iter->second.close();
+    }
+  }
 
 
 
@@ -422,21 +442,23 @@ void handleCommit(packetInfo packet){
  	for(uint32_t i=0; i<iter->second.getSeqNO(); i++){
  		lseek(fd, writeInfo[i].offset, SEEK_SET);
  		write(fd, writeInfo[i].strData, writeInfo[i].blockSize);
-    cout<<"Write data "<<writeInfo[i].strData<<" at block "<<writeInfo[i].offset<<endl;
  	}
  	close(fd);
 	//If close == true, close this file locally and do some clean up stuff
- 	iter->second.finish_Transaction(true);
- 	if(packet.close == 1){
- 		iter->second.close();
- 	}
 
   packetInfo outPacket;
   outPacket.clientID = packet.clientID;
   outPacket.serverID = serverId;
   outPacket.fd = packet.fd;
   outPacket.transactionID = packet.transactionID;
+  outPacket.writeNumber = iter->second.getSeqNO();
   sendPacket(COMMITACK, outPacket);
+
+  iter->second.finish_Transaction(true);
+  if(packet.close == 1){
+    printf("Close file");
+    iter->second.close();
+  }
 }
 
 void handleAbort(packetInfo packet){
