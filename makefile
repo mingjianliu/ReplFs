@@ -14,7 +14,7 @@ LIBS    = -lclientReplFs
 CLIENT_OBJECTS = client.o
 SERVER_OBJECTS = server.o
 
-all:	appl replFsServer test
+all:	appl replFsServer
 
 appl:	appl.o $(C_DIR)/libclientReplFs.a
 	$(CCF) -o appl appl.o $(LIBDIRS) $(LIBS)

@@ -1,0 +1,22 @@
+Resend time change:
+	All resend are changed from 300 milliseconds/time, 10 times to 200 milliseconds/time, 30 times.
+	Since 10 times resend result in some packet loss, which turn to inconsistency.
+
+Handle client unavailable:
+	In server, the check phase and commit/abort phase are integrated together. After response to a check packet, the server wait up to 9 seconds for commit/abort packet. If no packet received, then the server just regard this client as dead, and send a broadcast to all other servers to requery the transcation's status. If any server got commit/abort and reply the status, the server will do the same.
+
+Handle client unavailable 2:
+	The client don't send a dummy writeblock to tell server it's alive(this packet functions like a heartbeat packet). Since the application just do operations continuously, it's not a necessity.
+
+Packet field change to handle client unavailable:
+	The TranscationRequest/TranscationResponse packet's field is changed. ClientID is added, and serverID in both packet indicates the request server's ID.
+
+future direction:
+	Thinking about make it a factory pattern in server. Every time a client connected, make a instance in a seperate thread, to serve that client. All these instances share the opened file's states so two client can't open the same file.
+
+Future direction:
+	Multiple different file opened by clients is already implemented. So it's no longer future direction.
+
+Issue:
+	Only port 1000 or 5018 works, the port assigned in port_info "44032" doesn't work.
+	Sometime the local server system calls just generate Binary files which can't compare with correct answer. However, it just works with retry.
