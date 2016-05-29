@@ -1,3 +1,10 @@
+/****************/
+/* Mark Liu */
+/* 05/27/2016   */
+/* CS 244B  */
+/* Spring 2016  */
+/****************/
+
 #include <stdbool.h>
 #include <map>
 #include <set>
@@ -278,8 +285,6 @@ void handleOpen(packetInfo packet){
 
 void handleWriteBlock(packetInfo packet){
 
-  //printf( "Handle writeblock\n");
-
 	std::map<uint32_t,client>::iterator iter = clients.find(packet.clientID);
 	//Save write information
 	if(iter == clients.end()){
@@ -327,7 +332,6 @@ void handleCheck(packetInfo packet){
 		}
     int resend = 0;
 		while(!checkAllReceived(writeVector, packet.writeNumber)){
-        printf("check here!\n");
   			NextEvent(&event);
   			  //if recevied timeout interval, resend one
   			if(event.eventType==EVENT_TIMEOUT){
@@ -350,13 +354,6 @@ void handleCheck(packetInfo packet){
 	outPacket.vote = true;
 	sendPacket(VOTE, outPacket);
 
-
-  // printf("Wait for commit/abort\n");
-  // for(int i=0; i<30; i++){
-  //   sendPacket(VOTE, outPacket);
-  // }
-
-
   //Wait for commit or abort, if time expires, just query other servers if they received it.
   //If any server received this transaction. And then just clear this client
   int wait = 0;
@@ -371,10 +368,8 @@ void handleCheck(packetInfo packet){
       if(info.clientID == packet.clientID && info.fd == packet.fd && info.transactionID == packet.transactionID){
         if(incoming.type==COMMIT) {
           handleCommit(info);
-          printf("Commit now\n");
         }  
         if(incoming.type==ABORT){
-          printf("Abort now\n");
           handleAbort(info);
         } 
         break;
@@ -383,7 +378,6 @@ void handleCheck(packetInfo packet){
   }
 
   //If no commit/abort received, query other servers
-  printf("Enter 3 phase\n");
   if(wait==MAX_WAIT_TIME){
     sendPacket(TRANSACTREQ, outPacket);
     wait = 0;
@@ -456,7 +450,6 @@ void handleCommit(packetInfo packet){
 
   iter->second.finish_Transaction(true);
   if(packet.close == 1){
-    printf("Close file");
     iter->second.close();
   }
 }

@@ -1,3 +1,10 @@
+/****************/
+/* Mark Liu */
+/* 05/27/2016   */
+/* CS 244B  */
+/* Spring 2016  */
+/****************/
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

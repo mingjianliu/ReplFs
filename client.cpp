@@ -1,8 +1,8 @@
 /****************/
-/* Your Name	*/
-/* Date		*/
+/* Mark Liu	*/
+/* 05/27/2016		*/
 /* CS 244B	*/
-/* Spring 2014	*/
+/* Spring 2016	*/
 /****************/
 
 #define DEBUG
@@ -154,13 +154,9 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
       packetInfo info = receviePacket(incoming);
       if(info.clientID == client::instance()->get_ID()){
         client::instance()->servers.insert(info.serverID);
-        printf("Insert server, serverID is %d, now %d servers\n", info.serverID, client::instance()->servers.size());
-
       }
     }
   }  
-
-  printf("Totally %d servers\n", client::instance()->servers.size());
 
   if(resend == MAX_RESEND)
     return (ErrorReturn);
@@ -168,15 +164,11 @@ InitReplFs( unsigned short portNum, int packetLoss, int numServers ) {
   return( NormalReturn );  
 }
 
+//Seems don't clean it everytime is better
 void cleanServer(std::set<uint32_t> server){
-  return;
-}
-/* ------------------------------------------------------------------ */
-void cleanServer1(std::set<uint32_t> server){
-    for(std::set<uint32_t>::iterator iter = server.begin(); iter!=server.end(); iter++){
-      client::instance()->servers.erase(*iter);
-    }
-    printf("Available server number %d.\n", client::instance()->servers.size());
+    // for(std::set<uint32_t>::iterator iter = server.begin(); iter!=server.end(); iter++){
+    //   client::instance()->servers.erase(*iter);
+    // }
 }
 
 int OpenFile( char * fileName ) {
@@ -218,8 +210,7 @@ int OpenFile( char * fileName ) {
       packetInfo info = receviePacket(incoming);
       if(info.clientID == client::instance()->get_ID() && info.fd == fd && server.find(info.serverID)!=server.end() ){
         server.erase(info.serverID);
-        if(info.success == 0){ fail = true;
-        printf("server %d failed\n", info.serverID);}
+        if(info.success == 0){ fail = true;}
       }
     }
   }  
@@ -384,7 +375,6 @@ Commit_helper( int fd, bool close) {
   //If abort == True, call abort and exit with ErrorReturn
   if(abort == true){
     Abort(fd);
-    printf("It is aborted!!! hahahahaha \n");
     return (NormalReturn);
     //return ErrorReturn;
   }
@@ -411,7 +401,6 @@ Commit_helper( int fd, bool close) {
       //If response with commitACK, client and transcation matches
       if(info.clientID == packet.clientID && info.transactionID == packet.transactionID && info.fd == packet.fd && server.find(info.serverID)!=server.end()){
         server.erase(info.serverID);
-        printf("the serverID is %d, write number is %d\n", info.serverID, info.writeNumber);
       }
     }
   }
